@@ -12,7 +12,7 @@
         "binaryDir": "${sourceDir}/build",
         "cacheVariables": {
           "CMAKE_CONFIGURATION_TYPES": "Debug;Release",
-	  	  "CMAKE_CXX_FLAGS": "/EHsc /MP /W4 /WX /external:W0",
+	  	  "CMAKE_CXX_FLAGS": "/EHsc /MP /W4 /WX /external:W0 /DNOMINMAX /DWIN32_LEAN_AND_MEAN /DUNICODE /D_UNICODE",
 	  	  "CMAKE_CXX_FLAGS_RELEASE": "/O2 /DNDEBUG"
         },
         "errors": {
@@ -26,7 +26,10 @@
 	  {
 	    "name": "vcpkg",
 	    "hidden": true,
-        "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+        "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+		"cacheVariables": {
+			"VCPKG_OVERLAY_PORTS": "${sourceDir}/cmake/ports/"
+		}
       },
       {
 	    "name": "windows",

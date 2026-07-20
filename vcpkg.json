@@ -7,9 +7,9 @@
     "directxtk",
     "fmt",
     "rapidcsv",
-    "simpleini",
     "nlohmann-json",
-    "spdlog"
+    "spdlog",
+    "clib-util"
   ],
-  "builtin-baseline": "2d6a6cf3ac9a7cc93942c3d289a2f9c661a6f4a7"
+  "builtin-baseline": "40f3c709db80acf154ac4b17a1f83c564ebd022e"
 }

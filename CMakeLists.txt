@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.20)
 
 set(NAME "ImmersiveFastTravelEncountersSSE")
 set(VERSION 1.0.0)
+set(AUTHOR "ForestJ316")
 
 
 # ---- Options ----
@@ -49,6 +50,7 @@ else()
 endif()
 
 set_from_environment(SkyrimPath)
+
 set(CommonLibName "CommonLibSSE-NG")
 find_commonlib_path()
 
@@ -76,12 +78,6 @@ project(
 )
 
 configure_file(
-	${CMAKE_CURRENT_SOURCE_DIR}/cmake/Version.h.in
-	${CMAKE_CURRENT_BINARY_DIR}/include/Version.h
-	@ONLY
-)
-
-configure_file(
 	${CMAKE_CURRENT_SOURCE_DIR}/cmake/version.rc.in
 	${CMAKE_CURRENT_BINARY_DIR}/version.rc
 	@ONLY
@@ -98,11 +94,9 @@ endif()
 
 # ---- Globals ----
 
-#[[
-add_compile_definitions(
-	SKSE_SUPPORT_XBYAK
-)
-#]]
+#add_compile_definitions(
+#	SKSE_SUPPORT_XBYAK
+#)
 
 if(MSVC)
 	if(NOT ${CMAKE_GENERATOR} STREQUAL "Ninja")
@@ -115,8 +109,6 @@ endif()
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_DEBUG OFF)
 
-set(Boost_USE_STATIC_LIBS ON)
-
 # ---- Dependencies ----
 
 if(DEFINED CommonLibPath AND NOT ${CommonLibPath} STREQUAL "" AND IS_DIRECTORY ${CommonLibPath})
@@ -124,18 +116,13 @@ if(DEFINED CommonLibPath AND NOT ${CommonLibPath} STREQUAL "" AND IS_DIRECTORY $
 else()
 	message(
 		FATAL_ERROR
-		"Variable ${CommonLibName}Path is not set or in extern/."
+		"Variable ${CommonLibName}. Path is not set or in extern/."
 	)
 endif()
 
-# ---- Add source files ----
+find_path(CLIB_UTIL_INCLUDE_DIRS "ClibUtil/utils.hpp")
 
-file(GLOB_RECURSE HEADER_FILES
-	CONFIGURE_DEPENDS
-	${CMAKE_CURRENT_SOURCE_DIR}/include/*.cpp
-	${CMAKE_CURRENT_SOURCE_DIR}/include/*.h
-	${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp
-)
+# ---- Add source files ----
 
 file(GLOB_RECURSE SOURCE_FILES
 	CONFIGURE_DEPENDS
@@ -148,33 +135,33 @@ source_group(
 	TREE
 		${CMAKE_CURRENT_SOURCE_DIR}
 	FILES
-		${HEADER_FILES}
 		${SOURCE_FILES}
-)
-
-source_group(
-	TREE
-		${CMAKE_CURRENT_BINARY_DIR}
-	FILES
-		${CMAKE_CURRENT_BINARY_DIR}/include/Version.h
 )
 
 # ---- Create DLL ----
 
-#find_package(CommonLibSSE REQUIRED)
+include(${CommonLibPath}/cmake/CommonLibSSE.cmake)
 
-#add_commonlibsse_plugin(${PROJECT_NAME}
-#    SOURCES ${HEADER_FILES} ${SOURCE_FILES})
-
-add_library(
+add_commonlibsse_plugin(
 	${PROJECT_NAME}
-	SHARED
-	${HEADER_FILES}
-	${SOURCE_FILES}
-	${CMAKE_CURRENT_BINARY_DIR}/include/Version.h
-	${CMAKE_CURRENT_BINARY_DIR}/version.rc
-	.clang-format
-	.editorconfig
+	NAME
+		${NAME}
+	AUTHOR
+		${AUTHOR}
+	VERSION
+		${PROJECT_VERSION}
+	MINIMUM_SKSE_VERSION
+		"1.4.15.0"
+    SOURCES
+		${SOURCE_FILES}
+)
+
+target_sources(
+	${PROJECT_NAME}
+	PRIVATE
+		${CMAKE_CURRENT_BINARY_DIR}/version.rc
+		.clang-format
+		.editorconfig
 )
 
 target_compile_features(
@@ -183,24 +170,11 @@ target_compile_features(
 		cxx_std_23
 )
 
-target_compile_definitions(
-	${PROJECT_NAME}
-	PRIVATE
-		_UNICODE
-)
-
 target_include_directories(
 	${PROJECT_NAME}
 	PRIVATE
-		${CMAKE_CURRENT_BINARY_DIR}/include
-		${CMAKE_CURRENT_SOURCE_DIR}/include
+		${CLIB_UTIL_INCLUDE_DIRS}
 		${CMAKE_CURRENT_SOURCE_DIR}/src
-)
-
-target_link_libraries(
-	${PROJECT_NAME}
-	PRIVATE
-		CommonLibSSE::CommonLibSSE
 )
 
 target_precompile_headers(
