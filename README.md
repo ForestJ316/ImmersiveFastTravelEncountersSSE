@@ -14,7 +14,7 @@ cd ImmersiveFastTravelEncountersSSE
 
 git submodule update --init --recursive
 
-cmake --preset vs2022
+cmake --preset vs2022 / cmake --preset vs2026
 cmake --build build --config Release
 ```
 
