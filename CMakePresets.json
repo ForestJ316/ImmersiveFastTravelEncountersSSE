@@ -1,0 +1,77 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+	"major": 3,
+	"minor": 21,
+	"patch": 0
+  },
+  "configurePresets": [
+      {
+	    "name": "cmake-dev",
+	    "hidden": true,
+        "binaryDir": "${sourceDir}/build",
+        "cacheVariables": {
+          "CMAKE_CONFIGURATION_TYPES": "Debug;Release",
+	  	  "CMAKE_CXX_FLAGS": "/EHsc /MP /W4 /WX /external:W0",
+	  	  "CMAKE_CXX_FLAGS_RELEASE": "/O2 /DNDEBUG"
+        },
+        "errors": {
+          "deprecated": true
+        },
+        "warnings": {
+          "deprecated": true,
+          "dev": true
+        }
+      },
+	  {
+	    "name": "vcpkg",
+	    "hidden": true,
+        "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+      },
+      {
+	    "name": "windows",
+        "hidden": true,
+        "cacheVariables": {
+          "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreaded$<$<CONFIG:Debug>:Debug>",
+          "VCPKG_TARGET_TRIPLET": "x64-windows-static"
+        }
+      },
+	  {
+	    "name": "base",
+	    "hidden": true,
+	    "inherits": [ "cmake-dev", "vcpkg", "windows" ]
+	  },
+	  {
+      "name": "vs2022-toolset",
+      "hidden": true,
+	    "generator": "Visual Studio 17 2022",
+	    "toolset": "v143"
+	  },
+    {
+      "name": "vs2026-toolset",
+      "hidden": true,
+      "generator": "Visual Studio 18 2026",
+      "toolset": "v145"
+    },
+    {
+      "name": "vs2022",
+      "inherits": [ "base", "vs2022-toolset" ]
+    },
+    {
+      "name": "vs2026",
+      "inherits": [ "base", "vs2026-toolset" ]
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "vs2022",
+      "configuration": "Release",
+      "configurePreset": "vs2022"
+    },
+    {
+      "name": "vs2026",
+      "configuration": "Release",
+      "configurePreset": "vs2026"
+    }
+  ]
+}
