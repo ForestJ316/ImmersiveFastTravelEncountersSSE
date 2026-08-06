@@ -51,9 +51,6 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 
 	logger::info("Game version {}", a_skse->RuntimeVersion().string("."));
 
-	//EnemyHandler::Hooks::Install();
-	//Papyrus::RegisterPapyrus();
-
 	if (!SKSE::GetMessagingInterface()->RegisterListener(MessageHandler)) {
 		return false;
 	}

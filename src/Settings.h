@@ -23,6 +23,8 @@ public:
 
 	static inline int iEncounterChance = 30;
 	static inline float fMinimumDistance = 300.0f;
+	static inline RE::BGSSoundCategory* soundFXCategory = nullptr;
+	static inline RE::BGSSoundOutput* soundFXOutput = nullptr;
 
 private:
 	void SetFastTravelEncounters(std::string a_type, std::vector<std::string> a_encounterHolds, const json::iterator a_encounter);
@@ -30,6 +32,7 @@ private:
 	void InitializeEncounterCache();
 	void InitializeActivatorCache();
 	void CheckIsExperienceModInstalled();
+	void InitializeSoundFXForms();
 
 	int iDebugEncounter = 0;
 
@@ -38,6 +41,7 @@ private:
 		std::string title = "";
 		std::string message = "";
 		json choices;
+		std::string soundFX = "";
 		std::optional<bool> survival = std::nullopt;
 	};
 	// EncounterData structure: [Fast Travel Type][Encounter Conditions].Encounter Values()

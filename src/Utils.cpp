@@ -42,7 +42,6 @@ bool Utils::GetCellIsInLocation(std::string_view a_locName, RE::TESObjectCELL* a
 	auto currentLoc = a_cell->GetLocation();
 	RE::BSFixedString currentLocName = currentLoc->GetFullName();
 	while (currentLocName != "Tamriel" && !string::is_empty(currentLocName.c_str())) {
-		logger::info("current loc name: {}, a_locName: {}, iequals: {}", currentLocName, a_locName, string::iequals(currentLocName, a_locName));
 		if (string::iequals(currentLocName, a_locName)) {
 			return true;
 		}
@@ -60,8 +59,6 @@ RE::TESObjectCELL* Utils::GetCellNearPlayerWithLocation(RE::TESObjectCELL* a_par
 		return nullptr;
 	}
 	if (a_parentCell->GetLocation()) {
-		// TEST
-		logger::info("returning parentcell with loc: {}", a_parentCell->GetLocation()->GetFullName());
 		return a_parentCell;
 	}
 	// Fall-back for when the parent cell has no location
@@ -74,7 +71,7 @@ RE::TESObjectCELL* Utils::GetCellNearPlayerWithLocation(RE::TESObjectCELL* a_par
 			for (std::uint32_t gridX = 0; gridX < gridCellArray->length; ++gridX) {
 				for (std::uint32_t gridY = 0; gridY < gridCellArray->length; ++gridY) {
 					auto gridCell = gridCellArray->GetCell(gridX, gridY);
-					// Check which location appears the most, that will be the relevant one
+					// Store the locations and check which appears the most, that will be the relevant one
 					if (gridCell && gridCell->GetLocation() && gridCell->IsExteriorCell()) {
 						// Parent location of location should be enough for most cases
 						auto gridCellLocParentLoc = gridCell->GetLocation()->parentLoc;

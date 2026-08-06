@@ -51,6 +51,8 @@ void Settings::InitializeSettings()
 				int debug_temp = string::to_num<int>(debugData->second);
 				if (debug_temp > 0) {
 					iDebugEncounter = debug_temp;
+					// If debug is on, then always show the relevant encounter
+					iEncounterChance = 100;
 				}
 			}
 			logger::info("...Settings initialized.");
@@ -85,6 +87,10 @@ void Settings::SetFastTravelEncounters(std::string a_type, std::vector<std::stri
 			exitButton[""] = { {"Choice", a_encounter.value().at("Choice")} };
 		}
 		cachedData.choices = exitButton;
+	}
+	// Optional
+	if (a_encounter.value().contains("SoundFX") && a_encounter.value().at("SoundFX").type() == json::value_t::string) {
+		cachedData.soundFX = a_encounter.value().at("SoundFX");
 	}
 	// Optional
 	if (a_encounter.value().contains("Survival") && a_encounter.value().at("Survival").type() == json::value_t::boolean) {
@@ -239,12 +245,24 @@ void Settings::CheckIsExperienceModInstalled()
 	}
 }
 
+void Settings::InitializeSoundFXForms()
+{
+	const auto dataHandler = RE::TESDataHandler::GetSingleton();
+	if (!dataHandler) {
+		logger::error("TESDataHandler not found.");
+		return;
+	}
+	soundFXCategory = dataHandler->LookupForm<RE::BGSSoundCategory>(0x172A1, "Skyrim.esm");
+	soundFXOutput = dataHandler->LookupForm<RE::BGSSoundOutput>(0x7EDCA, "Skyrim.esm");
+}
+
 void Settings::Initialize()
 {
 	InitializeSettings();
 	InitializeEncounterCache();
 	InitializeActivatorCache();
 	CheckIsExperienceModInstalled();
+	InitializeSoundFXForms();
 }
 
 Settings::CachedDataType Settings::GetEncounterCache()
