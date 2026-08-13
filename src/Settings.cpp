@@ -2,10 +2,10 @@
 
 #include "Utils.h"
 
-#include <ClibUtil/simpleINI.hpp>
+#include <ClibUtil/SimpleIni.hpp>
 
-Settings::CachedDataType Settings::EncounterCache{};
-std::unordered_map<RE::FormID, std::string> Settings::FastTravelActivatorCache{};
+Settings::CachedDataType Settings::EncounterCache = {};
+std::unordered_map<RE::FormID, std::string> Settings::FastTravelActivatorCache = {};
 
 void Settings::InitializeSettings()
 {
@@ -24,10 +24,10 @@ void Settings::InitializeSettings()
 		if (ini.LoadFile(path.string().c_str()) == SI_OK) {
 			// Settings
 			auto settingsSection = ini.GetSection("Settings");
-			for (auto& data : *settingsSection) {
-				auto settingName = data.first.pItem;
+			for (const auto& data : *settingsSection) {
+				const auto settingName = data.first.pItem;
 				if (string::iequals(settingName, "iEncounterChance")) {
-					iEncounterChance = string::to_num<int>(data.second);
+					iEncounterChance = string::to_num<std::int16_t>(data.second);
 					// Check user error in input
 					if (iEncounterChance < 0) {
 						iEncounterChance = 0;
@@ -45,14 +45,19 @@ void Settings::InitializeSettings()
 				}
 			}
 			// Debug
-			auto debugSection = ini.GetSection("Debug");
-			auto debugData = debugSection->find("iDebugEncounter");
+			const auto debugSection = ini.GetSection("Debug");
+			const auto debugData = debugSection->find("iDebugEncounter");
 			if (debugData != debugSection->end() && string::iequals(debugData->first.pItem, "iDebugEncounter")) {
-				int debug_temp = string::to_num<int>(debugData->second);
+				std::int16_t debug_temp = string::to_num<std::int16_t>(debugData->second);
 				if (debug_temp > 0) {
 					iDebugEncounter = debug_temp;
 					// If debug is on, then always show the relevant encounter
 					iEncounterChance = 100;
+				}
+				else {
+					// Just put something that will probably never appear
+					// in case the user decided to make an encounter with the key "0"
+					iDebugEncounter = INT16_MIN + 1;
 				}
 			}
 			logger::info("...Settings initialized.");
@@ -65,43 +70,44 @@ void Settings::InitializeSettings()
 	InitSettings(ini_path);
 }
 
-void Settings::SetFastTravelEncounters(std::string a_type, std::vector<std::string> a_encounterHolds, const json::iterator a_encounter)
+void Settings::SetFastTravelEncounters(std::string a_type, std::vector<std::string> a_encounterHolds, const json::const_iterator& a_encounter)
 {
 	CachedEncounterData cachedData;
 	// Optional
-	if (a_encounter.value().contains("Title") && a_encounter.value().at("Message").type() == json::value_t::string) {
-		cachedData.title = a_encounter.value().at("Title");
+	if (a_encounter.value().contains("Title") && a_encounter.value()["Title"].is_string()) {
+		cachedData.title = a_encounter.value()["Title"];
 	}
 	// Mandatory, but fall-back to empty string
-	if (a_encounter.value().contains("Message") && a_encounter.value().at("Message").type() == json::value_t::string) {
-		cachedData.message = a_encounter.value().at("Message");
+	if (a_encounter.value().contains("Message") && a_encounter.value()["Message"].is_string()) {
+		cachedData.message = a_encounter.value()["Message"];
 	}
 	// Optional, provide means to specify custom text for the exit button. Fall-back to "Ok" button
-	if (a_encounter.value().contains("Choices") && a_encounter.value().at("Choices").type() == json::value_t::array) {
-		cachedData.choices = a_encounter.value().at("Choices");
+	if (a_encounter.value().contains("Choices") && a_encounter.value()["Choices"].is_array()) {
+		cachedData.choices = a_encounter.value()["Choices"];
 	}
 	else {
 		json exitButton;
 		exitButton[""] = { {"Choice", "Ok"} };
-		if (a_encounter.value().contains("Choice") && a_encounter.value().at("Choice").type() == json::value_t::string) {
-			exitButton[""] = { {"Choice", a_encounter.value().at("Choice")} };
+		if (a_encounter.value().contains("Choice") && a_encounter.value()["Choice"].is_string()) {
+			exitButton[""] = { {"Choice", a_encounter.value()["Choice"]} };
 		}
 		cachedData.choices = exitButton;
 	}
 	// Optional
-	if (a_encounter.value().contains("SoundFX") && a_encounter.value().at("SoundFX").type() == json::value_t::string) {
-		cachedData.soundFX = a_encounter.value().at("SoundFX");
+	if (a_encounter.value().contains("SoundFX") && a_encounter.value()["SoundFX"].is_string()) {
+		cachedData.soundFX = a_encounter.value()["SoundFX"];
 	}
 	// Optional
-	if (a_encounter.value().contains("Survival") && a_encounter.value().at("Survival").type() == json::value_t::boolean) {
-		cachedData.survival = a_encounter.value().at("Survival");
+	if (a_encounter.value().contains("Survival") && a_encounter.value()["Survival"].is_boolean()) {
+		cachedData.survival = a_encounter.value()["Survival"];
 	}
 	// Check encounter being valid for multiple holds
-	for (auto& hold : a_encounterHolds) {
+	for (const auto& hold : a_encounterHolds) {
 		logger::info("inserting for hold: {}", hold);
+		holds.push_back(hold);
 		EncounterCache[a_type][hold].push_back(cachedData);
 	}
-	// TEST
+	// TODO
 	// Check activator specific, add later
 
 	// Check empty: no holds, no activator
@@ -124,22 +130,22 @@ void Settings::InitializeEncounterCache()
 		std::ifstream file(path.string().c_str());
 		if (file.is_open()) {
 			json encountersList = json::parse(file);
-			for (json::iterator encounter = encountersList.begin(); encounter != encountersList.end(); ++encounter) {
+			for (json::const_iterator encounter = encountersList.begin(); encounter != encountersList.end(); ++encounter) {
 				// Keys must be numbered only
 				if (string::is_only_digit(encounter.key())) {
 					// iDebugEncounter setting, get only the specified encounter
 					if (iDebugEncounter <= 0 || string::to_num<int>(encounter.key()) == iDebugEncounter) {
 						// Type is a mandatory field
-						if (encounter.value().contains("Type")) {
+						if (encounter.value().contains("Type") && encounter.value()["Type"].is_string()) {
 							// Check for conditions
-							// TEST
+							// TODO
 							// Activator from json add later
 							std::vector<std::string> encounterHolds;
-							if (encounter.value().contains("Hold")) {
-								encounterHolds = Utils::GetSplitStrings(encounter.value().at("Hold").get<std::string>(), ",");
+							if (encounter.value().contains("Hold") && encounter.value()["Hold"].is_string()) {
+								encounterHolds = Utils::GetSplitStrings(encounter.value()["Hold"].get<std::string>(), ",");
 							}
 							// Check for fast travel type
-							auto encounterType = encounter.value().at("Type").get<std::string>();
+							auto encounterType = encounter.value()["Type"].get<std::string>();
 							if (encounterType.contains("Map")) {
 								SetFastTravelEncounters("Map", encounterHolds, encounter);
 							}
@@ -187,8 +193,8 @@ void Settings::InitializeActivatorCache()
 		ini.SetMultiKey(false);
 		if (ini.LoadFile(path.string().c_str()) == SI_OK) {
 			// GetSection returns a multimap. The keys are already sorted by default
-			auto mapSection = ini.GetSection("Map");
-			for (auto& data : *mapSection) {
+			const auto mapSection = ini.GetSection("Map");
+			for (const auto& data : *mapSection) {
 				auto formWithFile = Utils::GetFormIDWithFile(data.first.pItem);
 				if (formWithFile.first) {
 					auto formID = dataHandler->LookupFormID(formWithFile.first, formWithFile.second);
@@ -197,8 +203,8 @@ void Settings::InitializeActivatorCache()
 					}
 				}
 			}
-			auto carriageSection = ini.GetSection("Carriage");
-			for (auto& data : *carriageSection) {
+			const auto carriageSection = ini.GetSection("Carriage");
+			for (const auto& data : *carriageSection) {
 				auto formWithFile = Utils::GetFormIDWithFile(data.first.pItem);
 				if (formWithFile.first) {
 					auto formID = dataHandler->LookupFormID(formWithFile.first, formWithFile.second);
@@ -207,8 +213,8 @@ void Settings::InitializeActivatorCache()
 					}
 				}
 			}
-			auto ferrySection = ini.GetSection("Ferry");
-			for (auto& data : *ferrySection) {
+			const auto ferrySection = ini.GetSection("Ferry");
+			for (const auto& data : *ferrySection) {
 				auto formWithFile = Utils::GetFormIDWithFile(data.first.pItem);
 				if (formWithFile.first) {
 					auto formID = dataHandler->LookupFormID(formWithFile.first, formWithFile.second);
@@ -217,8 +223,8 @@ void Settings::InitializeActivatorCache()
 					}
 				}
 			}
-			auto otherSection = ini.GetSection("Other");
-			for (auto& data : *otherSection) {
+			const auto otherSection = ini.GetSection("Other");
+			for (const auto& data : *otherSection) {
 				auto formWithFile = Utils::GetFormIDWithFile(data.first.pItem);
 				if (formWithFile.first) {
 					auto formID = dataHandler->LookupFormID(formWithFile.first, formWithFile.second);
@@ -237,6 +243,24 @@ void Settings::InitializeActivatorCache()
 	InitFastTravelActivatorCache(ini_path);
 }
 
+void Settings::InitializeForms()
+{
+	const auto dataHandler = RE::TESDataHandler::GetSingleton();
+	if (!dataHandler) {
+		logger::error("Settings::InitializeSoundFXForms: TESDataHandler not found.");
+		return;
+	}
+	sound_FXCategory = dataHandler->LookupForm<RE::BGSSoundCategory>(0x172A1, "Skyrim.esm");
+	sound_FXOutput = dataHandler->LookupForm<RE::BGSSoundOutput>(0x7EDCA, "Skyrim.esm");
+
+	survival_HungerCurrent = dataHandler->LookupForm<RE::TESGlobal>(0x81A, "ccqdrsse001-survivalmode.esl");
+	survival_HungerMax = dataHandler->LookupForm<RE::TESGlobal>(0x80C, "ccqdrsse001-survivalmode.esl");
+	survival_ExhaustionCurrent = dataHandler->LookupForm<RE::TESGlobal>(0x816, "ccqdrsse001-survivalmode.esl");
+	survival_ExhaustionMax = dataHandler->LookupForm<RE::TESGlobal>(0x84A, "ccqdrsse001-survivalmode.esl");
+	survival_ColdCurrent = dataHandler->LookupForm<RE::TESGlobal>(0x81B, "ccqdrsse001-survivalmode.esl");
+	survival_ColdMax = dataHandler->LookupForm<RE::TESGlobal>(0x84B, "ccqdrsse001-survivalmode.esl");
+}
+
 void Settings::CheckIsExperienceModInstalled()
 {
 	auto experience = REX::W32::GetModuleHandleW(L"Experience.dll");
@@ -245,41 +269,31 @@ void Settings::CheckIsExperienceModInstalled()
 	}
 }
 
-void Settings::InitializeSoundFXForms()
-{
-	const auto dataHandler = RE::TESDataHandler::GetSingleton();
-	if (!dataHandler) {
-		logger::error("TESDataHandler not found.");
-		return;
-	}
-	soundFXCategory = dataHandler->LookupForm<RE::BGSSoundCategory>(0x172A1, "Skyrim.esm");
-	soundFXOutput = dataHandler->LookupForm<RE::BGSSoundOutput>(0x7EDCA, "Skyrim.esm");
-}
-
 void Settings::Initialize()
 {
 	InitializeSettings();
 	InitializeEncounterCache();
 	InitializeActivatorCache();
+
+	InitializeForms();
 	CheckIsExperienceModInstalled();
-	InitializeSoundFXForms();
 }
 
-Settings::CachedDataType Settings::GetEncounterCache()
+const Settings::CachedDataType& Settings::GetEncounterCache() const
 {
-	return Settings::GetSingleton()->EncounterCache;
+	return EncounterCache;
 }
 
-std::unordered_map<RE::FormID, std::string> Settings::GetFastTravelActivatorCache()
+const std::unordered_map<RE::FormID, std::string>& Settings::GetFastTravelActivatorCache() const
 {
-	return Settings::GetSingleton()->FastTravelActivatorCache;
+	return FastTravelActivatorCache;
 }
 
-bool Settings::IsSurvivalEnabled()
+const bool Settings::IsSurvivalEnabled() const
 {
 	const auto dataHandler = RE::TESDataHandler::GetSingleton();
 	if (!dataHandler) {
-		logger::error("TESDataHandler not found.");
+		logger::error("Settings::IsSurvivalEnabled: TESDataHandler not found.");
 		return false;
 	}
 	auto survivalModeForm = dataHandler->LookupForm<RE::TESGlobal>(0x826, "ccqdrsse001-survivalmode.esl");
@@ -287,4 +301,10 @@ bool Settings::IsSurvivalEnabled()
 		return survivalModeForm->value;
 	}
 	return false;
+}
+
+const bool Settings::IsValidHold(const std::string& a_hold) const
+{
+	const auto found = std::ranges::find_if(holds, [a_hold](const std::string& hold) { return hold == a_hold; });
+	return !found->empty();
 }

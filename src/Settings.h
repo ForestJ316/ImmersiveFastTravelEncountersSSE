@@ -15,26 +15,37 @@ public:
 		return std::addressof(singleton);
 	}
 	void Initialize();
-	CachedDataType GetEncounterCache();
-	std::unordered_map<RE::FormID, std::string> GetFastTravelActivatorCache();
-	bool IsSurvivalEnabled();
+	const CachedDataType& GetEncounterCache() const;
+	const std::unordered_map<RE::FormID, std::string>& GetFastTravelActivatorCache() const;
+	const bool IsSurvivalEnabled() const;
+	const bool IsValidHold(const std::string& a_hold) const;
 
-	bool bIsExperienceModActive = false;
+	static inline bool bIsExperienceModActive = false;
 
-	static inline int iEncounterChance = 30;
-	static inline float fMinimumDistance = 300.0f;
-	static inline RE::BGSSoundCategory* soundFXCategory = nullptr;
-	static inline RE::BGSSoundOutput* soundFXOutput = nullptr;
+	static inline std::int16_t iEncounterChance = 25;
+	static inline float fMinimumDistance = 250.0f;
+
+	static inline RE::BGSSoundCategory* sound_FXCategory = nullptr;
+	static inline RE::BGSSoundOutput* sound_FXOutput = nullptr;
+	// Survival Mode needs
+	static inline RE::TESGlobal* survival_HungerCurrent = nullptr;
+	static inline RE::TESGlobal* survival_HungerMax = nullptr;
+	static inline RE::TESGlobal* survival_ExhaustionCurrent = nullptr;
+	static inline RE::TESGlobal* survival_ExhaustionMax = nullptr;
+	static inline RE::TESGlobal* survival_ColdCurrent = nullptr;
+	static inline RE::TESGlobal* survival_ColdMax = nullptr;
 
 private:
-	void SetFastTravelEncounters(std::string a_type, std::vector<std::string> a_encounterHolds, const json::iterator a_encounter);
+	void SetFastTravelEncounters(std::string a_type, std::vector<std::string> a_encounterHolds, const json::const_iterator& a_encounter);
 	void InitializeSettings();
 	void InitializeEncounterCache();
 	void InitializeActivatorCache();
-	void CheckIsExperienceModInstalled();
-	void InitializeSoundFXForms();
 
-	int iDebugEncounter = 0;
+	void InitializeForms();
+	void CheckIsExperienceModInstalled();
+	
+	std::int16_t iDebugEncounter = 0;
+	std::vector<std::string> holds = {};
 
 	struct CachedEncounterData
 	{

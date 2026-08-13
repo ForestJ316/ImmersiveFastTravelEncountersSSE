@@ -59,7 +59,7 @@ float FastTravelHandler::GetDistanceTraveled()
 	return 0.0f;
 }
 
-void FastTravelHandler::SetupMessageBoxOnFastTravelEndEvent(std::string a_fastTravelType)
+void FastTravelHandler::SetupMessageBoxOnFastTravelEndEvent(const std::string a_fastTravelType)
 {
 	MessageBoxHandler::GetSingleton()->SetupCurrentEncounterData(a_fastTravelType);
 	// Show the MessageBox after 1 second
@@ -75,7 +75,7 @@ FastTravelHandler::EventResult FastTravelHandler::ProcessEvent(const RE::MenuOpe
 		if (a_event->opening) {
 			auto speaker = RE::MenuTopicManager::GetSingleton()->speaker;
 			if (speaker && speaker.get()) {
-				auto activatorCache = Settings::GetSingleton()->GetFastTravelActivatorCache();
+				const auto& activatorCache = Settings::GetSingleton()->GetFastTravelActivatorCache();
 				auto speakerBase = speaker.get()->GetBaseObject();
 				// Fall-back check the object itself (should have a base though)
 				auto fastTravelSource = activatorCache.find(speaker.get()->formID);
@@ -85,7 +85,7 @@ FastTravelHandler::EventResult FastTravelHandler::ProcessEvent(const RE::MenuOpe
 				if (fastTravelSource != activatorCache.end()) {
 					sFastTravelType = fastTravelSource->second;
 					// Store the speaker for distance check
-					FastTravelHandler::GetSingleton()->speakerPtr = speaker.get();
+					speakerPtr = speaker.get();
 				}
 			}
 		}
@@ -107,7 +107,7 @@ FastTravelHandler::EventResult FastTravelHandler::ProcessEvent(const RE::MenuOpe
 			// Additional check for distance, for case where the player might go
 			// fast travel with another activator nearby (that is not in the list) within the 30s window
 			auto a_player = RE::PlayerCharacter::GetSingleton();
-			if (a_player && speakerPtr && speakerPtr.get() && a_player->GetDistance(speakerPtr.get()) > 800.0f) {
+			if (a_player && speakerPtr && speakerPtr.get() && a_player->GetDistance(speakerPtr.get()) > 1000.0f) {
 				sFastTravelType = "";
 				speakerPtr.reset(); // Deallocate memory
 			}
@@ -118,6 +118,7 @@ FastTravelHandler::EventResult FastTravelHandler::ProcessEvent(const RE::MenuOpe
 			if (!string::is_empty(sFastTravelType.c_str())) {
 				std::string sFastTravelType_temp = sFastTravelType;
 				sFastTravelType = "";
+				// TEST
 				logger::info("fast travel end event with type: {}", sFastTravelType_temp);
 				auto a_player = RE::PlayerCharacter::GetSingleton();
 				// From testing cell is already attached when loading menu closes
@@ -137,11 +138,11 @@ FastTravelHandler::EventResult FastTravelHandler::ProcessEvent(const RE::MenuOpe
 				if (mapMarkerPtr && mapMarkerPtr->parentCell) {
 					auto mapMarkerCell = mapMarkerPtr->parentCell;
 					// Check against the parent location of the map marker, since the nearest cell can be a different one
-					// Fall-back if no parent loc, check direct location
+					// Fall-back if no parent loc: check direct location
 					if (mapMarkerCell->GetLocation()) {
 						auto mapMarkerCellLocParentLoc = mapMarkerCell->GetLocation()->parentLoc;
-						if ((mapMarkerCellLocParentLoc && Utils::GetCellIsInLocation(mapMarkerCellLocParentLoc->GetFullName(), nearestCellWithLocation))
-							|| (!mapMarkerCellLocParentLoc && Utils::GetCellIsInLocation(mapMarkerCell->GetLocation()->GetFullName(), nearestCellWithLocation))) {
+						if ((mapMarkerCellLocParentLoc && Utils::GetCellIsInLocation(nearestCellWithLocation, mapMarkerCellLocParentLoc->GetFullName()))
+							|| (!mapMarkerCellLocParentLoc && Utils::GetCellIsInLocation(nearestCellWithLocation, mapMarkerCell->GetLocation()->GetFullName()))) {
 							SetupMessageBoxOnFastTravelEndEvent(sFastTravelType_temp);
 						}
 					}
@@ -219,11 +220,11 @@ void FastTravelHandler::Update(RE::PlayerCharacter* a_player, float a_delta)
 void FastTravelHandler::ResetVars()
 {
 	if (!string::is_empty(sFastTravelType.c_str())) {
-		sFastTravelType = "";
-		fThirtySecondsCheck = 0.0f;
-		nearestCellWithLocation = nullptr;
-		mapMarkerPtr.reset();
-		speakerPtr.reset();
-		
+		auto fastTravelHandler = FastTravelHandler::GetSingleton();
+		fastTravelHandler->sFastTravelType = "";
+		fastTravelHandler->fThirtySecondsCheck = 0.0f;
+		fastTravelHandler->nearestCellWithLocation = nullptr;
+		fastTravelHandler->mapMarkerPtr.reset();
+		fastTravelHandler->speakerPtr.reset();
 	}
 }

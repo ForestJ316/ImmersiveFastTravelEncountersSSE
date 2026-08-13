@@ -13,7 +13,6 @@ public:
 		static FastTravelHandler singleton;
 		return std::addressof(singleton);
 	}
-	//virtual EventResult ProcessEvent(const RE::TESFastTravelEndEvent*, RE::BSTEventSource<RE::TESFastTravelEndEvent>*) override;
 	virtual EventResult ProcessEvent(const RE::MenuOpenCloseEvent* a_event, RE::BSTEventSource<RE::MenuOpenCloseEvent>*) override;
 	virtual EventResult ProcessEvent(const RE::TESActivateEvent* a_event, RE::BSTEventSource<RE::TESActivateEvent>*) override;
 
@@ -47,37 +46,4 @@ private:
 	RE::NiPointer<RE::TESObjectREFR> speakerPtr = nullptr;
 	// Timer to show message box 1 second after loading menu closes
 	static float fTimerAfterLoading;
-
-	/*
-	class ActivateEvent : public RE::BSTEventSink<RE::TESActivateEvent>
-	{
-	private:
-		using EventResult = RE::BSEventNotifyControl;
-
-	public:
-		static ActivateEvent* GetSingleton()
-		{
-			static ActivateEvent singleton;
-			return std::addressof(singleton);
-		}
-		// Check for cases where the player might enter/exit interior/exterior
-		// manually near the activator during the 30 second window
-		virtual EventResult ProcessEvent(const RE::TESActivateEvent* a_event, RE::BSTEventSource<RE::TESActivateEvent>*) override;
-	};*/
-
-	/*
-	class MenuEvent : public RE::BSTEventSink<RE::MenuOpenCloseEvent>
-	{
-	private:
-		using EventResult = RE::BSEventNotifyControl;
-
-	public:
-		static MenuEvent* GetSingleton()
-		{
-			static MenuEvent singleton;
-			return std::addressof(singleton);
-		}
-		virtual EventResult ProcessEvent(const RE::MenuOpenCloseEvent* a_event, RE::BSTEventSource<RE::MenuOpenCloseEvent>*) override;
-	};
-	*/
 };

@@ -2,18 +2,18 @@
 
 #include <algorithm>
 
-std::vector<std::string> Utils::GetSplitStrings(std::string a_str, std::string_view a_delimiter)
+std::vector<std::string> Utils::GetSplitStrings(const std::string& a_str, std::string_view a_delimiter)
 {
 	if (string::is_empty(a_str.c_str())) {
 		return {};
 	}
 	auto splitString = string::split(a_str, a_delimiter);
 	// Remove leading and trailing spaces
-	std::ranges::for_each(splitString, [](std::string &str) { string::trim(str); });
+	std::ranges::for_each(splitString, [](std::string& str) { string::trim(str); });
 	return splitString;
 }
 
-std::pair<std::uint32_t, std::string> Utils::GetFormIDWithFile(std::string a_formWithFile)
+std::pair<std::uint32_t, std::string> Utils::GetFormIDWithFile(const std::string& a_formWithFile)
 {
 	if (string::is_empty(a_formWithFile.c_str())) {
 		logger::error("Form for a specified function is empty.");
@@ -33,15 +33,16 @@ std::pair<std::uint32_t, std::string> Utils::GetFormIDWithFile(std::string a_for
 	return std::make_pair(formID, fileName);
 }
 
-bool Utils::GetCellIsInLocation(std::string_view a_locName, RE::TESObjectCELL* a_cell)
+bool Utils::GetCellIsInLocation(RE::TESObjectCELL* a_cell, const std::string_view& a_locName)
 {
 	if (!a_cell || !a_cell->GetLocation()) {
 		return false;
 	}
-	// Exhaust all locations until Tamriel
+	// Exhaust all locations until Tamriel, fail-safe 4 iterations (most cases 2 is enough)
+	int i = 4;
 	auto currentLoc = a_cell->GetLocation();
 	RE::BSFixedString currentLocName = currentLoc->GetFullName();
-	while (currentLocName != "Tamriel" && !string::is_empty(currentLocName.c_str())) {
+	while (currentLocName != "Tamriel" && i != 0) {
 		if (string::iequals(currentLocName, a_locName)) {
 			return true;
 		}
@@ -49,6 +50,7 @@ bool Utils::GetCellIsInLocation(std::string_view a_locName, RE::TESObjectCELL* a
 			currentLoc = currentLoc->parentLoc;
 			currentLocName = currentLoc->GetFullName();
 		}
+		i -= 1;
 	}
 	return false;
 }
@@ -109,7 +111,7 @@ RE::TESObjectCELL* Utils::GetCellNearPlayerWithLocation(RE::TESObjectCELL* a_par
 float Utils::GetDistanceInMeters(float a_distance)
 {
 	if (a_distance >= 0.0f) {
-		return a_distance * 1.428f / 100;
+		return a_distance * 1.428f / 100.0f;
 	}
 	return 0.0f;
 }

@@ -30,13 +30,16 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg)
 	switch (a_msg->type) {
 		case SKSE::MessagingInterface::kDataLoaded :
 			logger::info("{:*^50}", "DATA LOADED"sv);
-			FastTravelHandler::GetSingleton()->Initialize();
 			Settings::GetSingleton()->Initialize();
+			Functions::CacheActorValueNames();
+			FastTravelHandler::GetSingleton()->Initialize();			
 			logger::info("{:*^50}", ""sv);
 			break;
 		case SKSE::MessagingInterface::kPreLoadGame :
 			logger::info("in PreLoadGame");
 			FastTravelHandler::GetSingleton()->ResetVars();
+			// In case the game was reloaded before the current encounter was finished
+			MessageBoxHandler::GetSingleton()->ResetCurrentEncounterData();
 			break;
 		default:
 			break;

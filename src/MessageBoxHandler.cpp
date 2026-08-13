@@ -5,26 +5,24 @@
 #include "Functions.h"
 #include "Utils.h"
 
-MessageBoxHandler::CurrentEncounterData MessageBoxHandler::currentEncounterData{};
+MessageBoxHandler::CurrentEncounterData MessageBoxHandler::currentEncounterData = {};
 
 void MessageBoxHandler::Run(std::uint8_t a_button)
 {
 	if (currentEncounterData.exit) {
 		// Do all outcomes upon exiting the MessageBox menu
-		for (auto& outcome : currentEncounterData.outcomes) {
-			Functions::DoFunction(outcome);
+		for (const auto& outcome : currentEncounterData.outcomes) {
+			Functions::DoFunction(outcome, "Outcome");
 		}
-		ResetEncounterData();
+		ResetCurrentEncounterData();
 	}
 	else {
 		callback(static_cast<std::uint8_t>(a_button));
-		if (!currentEncounterData.choices.empty()) {
-			DisplayMessageBox();
-		}
+		DisplayMessageBox();
 	}
 }
 
-void MessageBoxHandler::Show(const std::string& a_bodyText, std::vector<std::string> a_buttonText, std::function<void(std::uint8_t)> a_callback)
+void MessageBoxHandler::Show(const std::string& a_bodyText, const std::vector<std::string>& a_buttonText, std::function<void(std::uint8_t)> a_callback)
 {
 	SKSE::GetTaskInterface()->AddTask([a_bodyText, a_buttonText, a_callback]() {
 		auto* factoryManager = RE::MessageDataFactoryManager::GetSingleton();
@@ -33,7 +31,7 @@ void MessageBoxHandler::Show(const std::string& a_bodyText, std::vector<std::str
 		auto* messageBox = factory->Create();
 		messageBox->callback = RE::make_smart<MessageBoxHandler>(a_callback);
 		messageBox->bodyText = a_bodyText;
-		for (auto& text : a_buttonText) {
+		for (const auto& text : a_buttonText) {
 			messageBox->buttonText.push_back(text.c_str());
 		}
 		RE::MessageBoxMenu::QueueMessage(messageBox);
@@ -45,13 +43,13 @@ void MessageBoxHandler::DisplayMessageBox(bool a_init)
 	// Don't show anything if there are no buttons
 	if (!currentEncounterData.choices.empty()) {
 		// Create bodyText
-		std::string bodyText = currentEncounterData.title + "\n\n" + currentEncounterData.message;
+		std::string bodyText = currentEncounterData.title + "\n" + currentEncounterData.message;
 		if (string::is_empty(currentEncounterData.title.c_str())) {
 			bodyText = currentEncounterData.message;
 		}
 		std::vector<std::string> buttonText;
 		for (json::iterator choice = currentEncounterData.choices.begin(); choice != currentEncounterData.choices.end(); ++choice) {
-			if (choice.value().contains("Choice")) {
+			if (choice.value().contains("Choice") && choice.value()["Choice"].is_string()) {
 				buttonText.push_back(choice.value()["Choice"].get<std::string>());
 			}
 		}
@@ -69,68 +67,87 @@ void MessageBoxHandler::DisplayMessageBox(bool a_init)
 void MessageBoxHandler::SetupNextMessageBox(std::uint8_t a_button)
 {
 	json pickedChoice;
+	std::string successStr = "Success";
+	bool bRandomizedDone = false;
+
 	if (!currentEncounterData.choices.empty()) {
-		if (currentEncounterData.choices.type() == json::value_t::array) {
+		if (currentEncounterData.choices.is_array()) {
 			pickedChoice = currentEncounterData.choices.at(a_button);
 		}
-		else if (currentEncounterData.choices.type() == json::value_t::object) {
+		else if (currentEncounterData.choices.is_object()) {
 			pickedChoice = currentEncounterData.choices;
 		}
 	}
-	int iRandom = 0;
-	std::pair<int, int> iDualRandom = { 0, 0 };
 	// Check for a "Check" condition, as well as any nested ones
 	// Success by default without a check
-	bool bSuccess = true;
-	std::string successStr = "Success";
-	while (pickedChoice.contains("Check")) {
+	while (pickedChoice.contains("Check") && pickedChoice["Check"].is_string()) {
 		auto check = pickedChoice["Check"].get<std::string>();
 		SetRandomizedValues(pickedChoice, check, iRandom, iDualRandom);
-		bSuccess = std::get<0>(Functions::DoFunction(check));
+		bool bSuccess = std::get<0>(Functions::DoFunction(check, "Check"));
 		successStr = bSuccess ? "Success" : "Failure";
-		if (pickedChoice.contains(successStr) && pickedChoice[successStr].contains("Check")) {
+		if (pickedChoice.contains(successStr) && pickedChoice[successStr].contains("Check") && pickedChoice[successStr]["Check"].is_string()) {
 			pickedChoice = pickedChoice[successStr];
 		}
 		else {
+			bRandomizedDone = true;
 			break;
 		}
 	}
 	if (pickedChoice.contains(successStr)) {
-		// Title is optional
 		currentEncounterData.title = "";
-		if (pickedChoice[successStr].contains("Title")) {
+		currentEncounterData.message = "";
+		// Case when there was no "Check", but has a "Randomized" or "DualRandomized" in the parent, set the random values now
+		if (!bRandomizedDone) {
+			SetRandomizedValues(pickedChoice, currentEncounterData.message, iRandom, iDualRandom);
+		}
+		// Title, optional
+		if (pickedChoice[successStr].contains("Title") && pickedChoice[successStr]["Title"].is_string()) {
 			currentEncounterData.title = pickedChoice[successStr]["Title"];
 		}
-		// Message is mandatory, but still check in case of user error
-		currentEncounterData.message = "";
-		bool bRandomizerDone = false;
-		if (pickedChoice[successStr].contains("Message")) {
-			currentEncounterData.message = pickedChoice[successStr]["Message"];
-			SetRandomizedValues(pickedChoice[successStr], currentEncounterData.message, iRandom, iDualRandom);
-			bRandomizerDone = true;
+		// Outcomes, optional
+		if (pickedChoice[successStr].contains("Outcomes") && pickedChoice[successStr]["Outcomes"].is_array()) {
+			bool bRandomItems_flag = false;
+			// Store outcomes and perform them after exiting the MessageBox menu
+			for (json::const_iterator it = pickedChoice[successStr]["Outcomes"].begin(); it != pickedChoice[successStr]["Outcomes"].end(); ++it) {
+				auto outcome = it.value().get<std::string>();
+				SetRandomizedValues(pickedChoice[successStr], outcome, iRandom, iDualRandom, bRandomizedDone);
+				bRandomizedDone = true;
+				currentEncounterData.outcomes.push_back(outcome);
+				// Special case for AddRandomItem
+				// Store the selected items now, adding to inventory will be done upon exit
+				if (outcome.contains("AddRandomItem") && !bRandomItems_flag) {
+					randomItemList = std::get<3>(Functions::DoFunction(outcome, "Outcome"));
+					if (randomItemList.size() == 0) {
+						randomItemList.push_back({ nullptr, 1 });
+					}
+					// Don't check again, even if there is something wrong with the AddRandomItem input or there is a duplicate function
+					bRandomItems_flag = true;
+				}
+			}
 		}
-		// Check for nested choices
-		if (pickedChoice[successStr].contains("Choices")) {
+		// Message, mandatory. Still check in case of user error
+		if (pickedChoice[successStr].contains("Message") && pickedChoice[successStr]["Message"].is_string()) {
+			currentEncounterData.message = pickedChoice[successStr]["Message"];
+			SetRandomizedValues(pickedChoice[successStr], currentEncounterData.message, iRandom, iDualRandom, bRandomizedDone);
+			bRandomizedDone = true;
+			// Check if strings in message need replacing
+			if (randomItemList.size() > 0 && currentEncounterData.message.contains("%item")) {
+				SetRandomItemStrings(randomItemList, currentEncounterData.message);
+			}
+		}
+		// Choice/Choices, optional. Will just be an "Ok" button if no key
+		if (pickedChoice[successStr].contains("Choices") && pickedChoice[successStr]["Choices"].is_array()) {
 			currentEncounterData.choices = pickedChoice[successStr]["Choices"];
 		}
 		else {
 			json jsonExitButton;
 			jsonExitButton[""] = { {"Choice", "Ok"} };
 			// Custom text for the exit button set by the user
-			if (pickedChoice[successStr].contains("Choice")) {
+			if (pickedChoice[successStr].contains("Choice") && pickedChoice[successStr]["Choice"].is_string()) {
 				jsonExitButton[""] = { {"Choice", pickedChoice[successStr]["Choice"]} };
 			}
 			currentEncounterData.choices = jsonExitButton;
 			currentEncounterData.exit = true;
-		}
-		if (pickedChoice[successStr].contains("Outcomes")) {
-			for (json::iterator it = pickedChoice[successStr]["Outcomes"].begin(); it != pickedChoice[successStr]["Outcomes"].end(); ++it) {
-				auto outcome = it.value().get<std::string>();
-				SetRandomizedValues(pickedChoice[successStr], outcome, iRandom, iDualRandom, bRandomizerDone);
-				bRandomizerDone = true;
-				// Store outcomes and perform them after exiting the MessageBox menu
-				currentEncounterData.outcomes.push_back(outcome);
-			}
 		}
 	}
 	// Fail-safe in case the "Check" fails or the fields are wrong names
@@ -142,23 +159,41 @@ void MessageBoxHandler::SetupNextMessageBox(std::uint8_t a_button)
 
 void MessageBoxHandler::SetRandomizedValues(json a_jsonObj, std::string& a_textStr, int& a_iRandom, std::pair<int, int>& a_iDualRandom, bool a_alreadyDone)
 {
-	// We don't want to re-run the GetRandom and/or GetDualRandom functions for Outcomes etc.
-	if (a_alreadyDone) {
-		a_jsonObj = {};
+	// We don't want to re-run the RollRandom and/or RollDualRandom functions for Outcomes etc.
+	if (!a_alreadyDone) {
+		if (a_jsonObj.contains("DualRandomized") && a_jsonObj["DualRandomized"].is_string()) {
+			auto dualRandomReturn = Functions::DoFunction(a_jsonObj["DualRandomized"].get<std::string>(), "DualRandomized");
+			a_iDualRandom = { std::get<1>(dualRandomReturn), std::get<2>(dualRandomReturn) };
+		}
+		if (a_jsonObj.contains("Randomized") && a_jsonObj["Randomized"].is_string()) {
+			a_iRandom = std::get<1>(Functions::DoFunction(a_jsonObj["Randomized"].get<std::string>(), "Randomized"));
+		}
 	}
-	// DualRandomized first so we don't replace %random1 and %random2 strings in case both are included
-	if (a_jsonObj.contains("DualRandomized")) {
-		auto dualRandomReturn = Functions::DoFunction(a_jsonObj["DualRandomized"].get<std::string>());
-		a_iDualRandom = { std::get<1>(dualRandomReturn), std::get<2>(dualRandomReturn) };
-	}
+	// DualRandomized first so we don't risk replacing %dualRandom1 and %dualRandom2 strings in case both keys are included
 	// replace_all has a check whether the a_search argument is in the string
-	string::replace_all(a_textStr, "%random1", std::to_string(a_iDualRandom.first));
-	string::replace_all(a_textStr, "%random2", std::to_string(a_iDualRandom.second));
-	if (a_jsonObj.contains("Randomized")) {
-		a_iRandom = std::get<1>(Functions::DoFunction(a_jsonObj["Randomized"].get<std::string>()));
-	}
+	string::replace_all(a_textStr, "%dualRandom1", std::to_string(a_iDualRandom.first));
+	string::replace_all(a_textStr, "%dualRandom2", std::to_string(a_iDualRandom.second));
 	string::replace_all(a_textStr, "%random", std::to_string(a_iRandom));
 }
+
+void MessageBoxHandler::SetRandomItemStrings(const std::vector<std::pair<RE::TESForm*, std::int32_t>>& a_itemList, std::string& a_message)
+{
+	for (auto i = 0; i < a_itemList.size(); ++i) {
+		auto itemStr = std::format("%item{:d}", i + 1);
+		if (a_message.contains(itemStr)) {
+			auto itemName = a_itemList.at(i).first ? a_itemList.at(i).first->GetName() : "";
+			if (!string::is_empty(itemName)) {
+				// Amount, Name
+				string::replace_all(a_message, itemStr, std::format("{} {}", a_itemList.at(i).second, itemName));
+			}
+			// If there is something wrong with the AddRandomItem function or input then just remove the %item{:d} string
+			else {
+				string::replace_all(a_message, itemStr, "");
+			}
+		}
+	}
+}
+
 
 void MessageBoxHandler::PlayEncounterSoundFX(std::string a_soundPath, bool a_setup)
 {
@@ -170,11 +205,11 @@ void MessageBoxHandler::PlayEncounterSoundFX(std::string a_soundPath, bool a_set
 		RE::BSResource::ID file;
 		file.GenerateFromPath(a_soundPath.c_str());
 		RE::BSAudioManager::GetSingleton()->GetSoundHandleByFile(soundHandle, file, 128 | 0x20, 128);
-		if (Settings::soundFXOutput) {
-			soundHandle.SetOutputModel(Settings::soundFXOutput);
+		if (Settings::sound_FXOutput) {
+			soundHandle.SetOutputModel(Settings::sound_FXOutput);
 		}
-		if (Settings::soundFXCategory) {
-			soundHandle.SetVolume(Settings::soundFXCategory->GetCategoryVolume());
+		if (Settings::sound_FXCategory) {
+			soundHandle.SetVolume(Settings::sound_FXCategory->GetCategoryVolume());
 		}		
 	}
 	else {
@@ -183,56 +218,53 @@ void MessageBoxHandler::PlayEncounterSoundFX(std::string a_soundPath, bool a_set
 	}
 }
 
-void MessageBoxHandler::SetupCurrentEncounterData(std::string a_fastTravelType)
+void MessageBoxHandler::SetupCurrentEncounterData(const std::string& a_fastTravelType)
 {
 	if (string::is_empty(a_fastTravelType.c_str())) {
 		return;
 	}
 	// Roll the chance to show an encounter based on the setting
 	auto randomPercent = clib_util::RNG().generate<std::uint16_t>(1, 100);
+	// TEST
 	logger::info("encounter chance: {}, rand perc: {}", Settings::iEncounterChance, randomPercent);
 	if (Settings::iEncounterChance == 0 || randomPercent > Settings::iEncounterChance) {
 		return;
 	}
-	auto encounterCache = Settings::GetSingleton()->GetEncounterCache();
-	if (auto encounters = encounterCache.find(a_fastTravelType); encounters != encounterCache.end()) {
+	const auto& EncounterCache = Settings::GetSingleton()->GetEncounterCache();
+	if (auto encounters = EncounterCache.find(a_fastTravelType); encounters != EncounterCache.end()) {
 		std::vector<Settings::CachedEncounterData> validEncounters;
 		auto& nearestCellWithLocation = FastTravelHandler::GetSingleton()->GetNearestCellWithLocation();
-		for (auto& encounter : encounters->second) {
+		for (const auto& encounter : encounters->second) {
 			// First - Empty string, since it's valid for everything of this fast travel type
 			if (encounter.first == "") {
 				validEncounters.insert_range(validEncounters.end(), encounter.second);
 			}
-			else {
-				// Second - Check if player is in a valid hold
-				if (nearestCellWithLocation && Utils::GetCellIsInLocation(encounter.first, nearestCellWithLocation)) {
-					validEncounters.insert_range(validEncounters.end(), encounter.second);
-					// We don't care about the check after this, therefore reset the cell object
-					nearestCellWithLocation = nullptr;
-				}
-				// TEST
-				// Third - Check activator
+			// Second - Check if player is in a valid hold
+			else if (Settings::GetSingleton()->IsValidHold(encounter.first) && Utils::GetCellIsInLocation(nearestCellWithLocation, encounter.first)) {
+				validEncounters.insert_range(validEncounters.end(), encounter.second);
+				// We don't care about the check after this, therefore reset the cell object
+				nearestCellWithLocation = nullptr;
 			}
+			// TODO
+			// Third - Check activator
 		}
 		auto survivalEnabled = Settings::GetSingleton()->IsSurvivalEnabled();
-		for (auto it = validEncounters.begin(); it != validEncounters.end(); ++it) {
-			// If Survival Mode is off, remove all Survival Mode encounters
-			if (!survivalEnabled && it->survival == true) {
-				validEncounters.erase(it);
+		// If Survival Mode is on, remove all non-Survival Mode encounters
+		// If Survival Mode is off, remove all Survival Mode encounters
+		std::erase_if(validEncounters, [survivalEnabled](Settings::CachedEncounterData& encounter) {
+			if ((!survivalEnabled && encounter.survival == true) || (survivalEnabled && encounter.survival == false)) {
+				return true;
 			}
-			// If Survival Mode is on, remove all non-Survival Mode encounters
-			else if (survivalEnabled && it->survival == false) {
-				validEncounters.erase(it);
-			}
-		}
+			return false;
+		});
 		if (validEncounters.size() > 0) {
-			auto& randomEncounter = validEncounters.at(0);
+			std::uint16_t randomEncounterPos = 0;
 			if (validEncounters.size() > 1) {
 				// Return a random valid encounter
-				auto randomEncounterPos = clib_util::RNG().generate<std::uint16_t>(0, static_cast<std::uint16_t>(validEncounters.size() - 1));
-				randomEncounter = validEncounters.at(randomEncounterPos);
+				randomEncounterPos = clib_util::RNG().generate<std::uint16_t>(0, static_cast<std::uint16_t>(validEncounters.size() - 1));
 			}
-			// Setup the sound fx now
+			auto& randomEncounter = validEncounters.at(randomEncounterPos);
+			// Setup the sound fx now, but don't play it yet
 			if (!string::is_empty(randomEncounter.soundFX.c_str())) {
 				PlayEncounterSoundFX(randomEncounter.soundFX, true);
 			}
@@ -241,9 +273,18 @@ void MessageBoxHandler::SetupCurrentEncounterData(std::string a_fastTravelType)
 	}
 }
 
-void MessageBoxHandler::ResetEncounterData()
+const MessageBoxHandler::CurrentEncounterData& MessageBoxHandler::GetCurrentEncounterData() const
 {
-	currentEncounterData = {};
-	soundHandle = {};
-	Functions::ResetActiveEffectsList();
+	return currentEncounterData;
+}
+
+void MessageBoxHandler::ResetCurrentEncounterData()
+{
+	auto messageBoxHandler = MessageBoxHandler::GetSingleton();
+	messageBoxHandler->currentEncounterData = {};
+	messageBoxHandler->soundHandle = {};
+	messageBoxHandler->iRandom = 0;
+	messageBoxHandler->iDualRandom = { 0, 0 };
+	messageBoxHandler->randomItemList.clear();
+	Functions::ResetVars();
 }
