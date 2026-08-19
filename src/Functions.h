@@ -3,11 +3,11 @@
 class Functions
 {
 private:
-	typedef std::vector<std::pair<RE::TESForm*, std::int32_t>> FormAndAmountType;
+	using FormAndAmountType = std::vector<std::pair<RE::TESForm*, std::int32_t>>;
 
 public:
 	// Re-check the names of player skills and stats on kDataLoaded
-	static void CacheActorValueNames();
+	static void Initialize();
 	static void ResetVars();
 
 	static std::tuple<bool, int, int, FormAndAmountType> DoFunction(const std::string& a_outcome, const std::string a_type);
@@ -31,6 +31,7 @@ private:
 		HasSpell,
 		HasActiveSpell,
 		CastSpellChance,
+		RemoveActiveSpell,
 		DamageAV,
 		RestoreAV,
 		ModHungerPercent,
@@ -57,7 +58,7 @@ private:
 	static FormAndAmountType AddRandomItem(const std::vector<std::string>& a_args, const std::string& a_type);
 	// GetSkill, a_skillName, a_amount
 	static bool GetSkill(const std::vector<std::string>& a_args, const std::string& a_type);
-	// RewardSkillPercent, a_skillName, a_percAmount
+	// RewardSkillPercent, a_skillName, a_percentage
 	// (Only if Experience mod is not active)
 	static void RewardSkillPercent(const std::vector<std::string>& a_args, const std::string& a_type);
 	// RewardPlayerXP, a_amount
@@ -81,8 +82,10 @@ private:
 	static bool HasSpell(const std::vector<std::string>& a_args, const std::string& a_type);
 	// HasActiveSpell, 0xFormID|Mod
 	static bool HasActiveSpell(const std::vector<std::string>& a_args, const std::string& a_type);
-	// CastSpell, 0xFormID|Mod, a_percentage
+	// CastSpellChance, 0xFormID|Mod, a_percentage
 	static void CastSpellChance(const std::vector<std::string>& a_args, const std::string& a_type);
+	// RemoveActiveSpell, 0xFormID|Mod
+	static void RemoveActiveSpell(const std::vector<std::string>& a_args, const std::string& a_type);
 	// DamageAV, a_actorValue, a_amount
 	static void DamageAV(const std::vector<std::string>& a_args, const std::string& a_type);
 	// RestoreAV, a_actorValue, a_amount
@@ -100,8 +103,12 @@ private:
 	// in order to avoid iterating active effects multiple times
 	static std::vector<RE::ActiveEffect*> currentActiveEffects;
 	
+	// Dummy effects for DamageAV and RestoreAV functions
+	static inline RE::SpellItem* spell_DummyHitEvent = nullptr;
+	static inline RE::SpellItem* spell_DummyRestoreEffect = nullptr;
+
 	static inline std::array PLAYER_SKILL_AV = {
-		std::make_pair("One", RE::ActorValue::kOneHanded),
+		std::make_pair("One-handed", RE::ActorValue::kOneHanded),
 		std::make_pair("Two-handed",RE::ActorValue::kTwoHanded),
 		std::make_pair("Archery", RE::ActorValue::kArchery),
 		std::make_pair("Block", RE::ActorValue::kBlock),

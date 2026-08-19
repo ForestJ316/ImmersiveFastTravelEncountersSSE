@@ -67,14 +67,13 @@ RE::TESObjectCELL* Utils::GetCellNearPlayerWithLocation(RE::TESObjectCELL* a_par
 	// Find the location from checking the surrounding grid
 	// Only exterior cells for this
 	if (a_parentCell->IsExteriorCell()) {
-		auto gridCellArray = RE::TES::GetSingleton()->gridCells;
-		if (gridCellArray) {
+		if (const auto gridCellArray = RE::TES::GetSingleton()->gridCells; gridCellArray) {
 			std::unordered_map<RE::BGSLocation*, std::pair<RE::TESObjectCELL*, std::uint8_t>> locationCounter = {};
 			for (std::uint32_t gridX = 0; gridX < gridCellArray->length; ++gridX) {
 				for (std::uint32_t gridY = 0; gridY < gridCellArray->length; ++gridY) {
-					auto gridCell = gridCellArray->GetCell(gridX, gridY);
+					const auto gridCell = gridCellArray->GetCell(gridX, gridY);
 					// Store the locations and check which appears the most, that will be the relevant one
-					if (gridCell && gridCell->GetLocation() && gridCell->IsExteriorCell()) {
+					if (gridCell && gridCell->IsExteriorCell() && gridCell->GetLocation()) {
 						// Parent location of location should be enough for most cases
 						auto gridCellLocParentLoc = gridCell->GetLocation()->parentLoc;
 						if (gridCellLocParentLoc) {
@@ -94,15 +93,11 @@ RE::TESObjectCELL* Utils::GetCellNearPlayerWithLocation(RE::TESObjectCELL* a_par
 					}
 				}
 			}
-			std::pair<RE::TESObjectCELL*, std::uint8_t> bestLocation = {};
-			for (auto it = locationCounter.begin(); it != locationCounter.end(); ++it) {
-				// TEST
-				logger::info("loc name: {}, counter: {}", it->first->GetFullName(), it->second.second);
-				if (it->second.second > bestLocation.second) {
-					bestLocation = it->second;
-				}
-			}
-			return bestLocation.first;
+			using locMap_value_t = std::pair<RE::BGSLocation*, std::pair<RE::TESObjectCELL*, std::uint8_t>>;
+			const auto bestLocation = std::ranges::max_element(locationCounter, [](locMap_value_t prev, locMap_value_t next) {
+				return prev.second.second < next.second.second;
+			});
+			return bestLocation != locationCounter.end() ? bestLocation->second.first : nullptr;
 		}
 	}
 	return nullptr;

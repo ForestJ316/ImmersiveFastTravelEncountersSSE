@@ -1,8 +1,8 @@
 #include "FastTravelHandler.h"
 
+#include "Settings.h"
 #include "Utils.h"
 #include "MessageBoxHandler.h"
-#include "Settings.h"
 
 #include <algorithm>
 
@@ -51,7 +51,15 @@ float FastTravelHandler::GetDistanceTraveled()
 	}
 	// Everything else check the activator ref
 	else if (speakerPtr && speakerPtr.get()) {
-		auto distance = RE::PlayerCharacter::GetSingleton()->GetDistance(speakerPtr.get());
+		const auto a_player = RE::PlayerCharacter::GetSingleton();
+		auto distance = a_player->GetDistance(speakerPtr.get());
+		// If it's an interior cell then get the parent location and try to pull its center marker
+		if (speakerPtr->parentCell && speakerPtr->parentCell->IsInteriorCell()) {
+			auto speakerLoc = speakerPtr->parentCell->GetLocation();
+			if (speakerLoc && speakerLoc->parentLoc && speakerLoc->parentLoc->worldLocMarker) {
+				distance = a_player->GetDistance(speakerLoc->parentLoc->worldLocMarker.get().get());
+			}
+		}
 		// We don't need the speaker after this check
 		speakerPtr.reset();
 		return Utils::GetDistanceInMeters(distance);
@@ -62,14 +70,13 @@ float FastTravelHandler::GetDistanceTraveled()
 void FastTravelHandler::SetupMessageBoxOnFastTravelEndEvent(const std::string a_fastTravelType)
 {
 	MessageBoxHandler::GetSingleton()->SetupCurrentEncounterData(a_fastTravelType);
-	// Show the MessageBox after 1 second
-	fTimerAfterLoading = 1.0f;
+	// Show the MessageBox after 1.5 seconds
+	fTimerAfterLoading = 1.5f;
 }
 
 FastTravelHandler::EventResult FastTravelHandler::ProcessEvent(const RE::MenuOpenCloseEvent* a_event, RE::BSTEventSource<RE::MenuOpenCloseEvent>*)
 {
-	//logger::info("menu event name: {}, opening: {}", a_event->menuName, a_event->opening);
-	if (a_event->menuName == "Dialogue Menu"sv) {
+	if (a_event->menuName == RE::DialogueMenu::MENU_NAME) {
 		// Re-check on new dialogue openings before fast traveling as well
 		// There are cases where fast travel destination can be changed
 		if (a_event->opening) {
@@ -77,7 +84,7 @@ FastTravelHandler::EventResult FastTravelHandler::ProcessEvent(const RE::MenuOpe
 			if (speaker && speaker.get()) {
 				const auto& activatorCache = Settings::GetSingleton()->GetFastTravelActivatorCache();
 				auto speakerBase = speaker.get()->GetBaseObject();
-				// Fall-back check the object itself (should have a base though)
+				// Fall-back check the reference itself (should have a base though)
 				auto fastTravelSource = activatorCache.find(speaker.get()->formID);
 				if (speakerBase) {
 					fastTravelSource = activatorCache.find(speakerBase->formID);
@@ -94,65 +101,61 @@ FastTravelHandler::EventResult FastTravelHandler::ProcessEvent(const RE::MenuOpe
 			fThirtySecondsCheck = 30.0f;
 		}
 	}
-	if (a_event->menuName == "Loading Menu"sv) {
-		// TEST
-		logger::info("loading menu opening: {}", a_event->opening);
-		if (RE::PlayerCharacter::GetSingleton()->parentCell) {
-			logger::info("player cell formid is: {}", RE::PlayerCharacter::GetSingleton()->parentCell->formID);
-		}
-
+	if (a_event->menuName == RE::LoadingMenu::MENU_NAME) {
 		// If loading menu started within 30 seconds of closing the dialogue, then it could be a fast travel
 		if (a_event->opening && fThirtySecondsCheck > 0.0f) {
 			fThirtySecondsCheck = 0.0f;
 			// Additional check for distance, for case where the player might go
 			// fast travel with another activator nearby (that is not in the list) within the 30s window
-			auto a_player = RE::PlayerCharacter::GetSingleton();
-			if (a_player && speakerPtr && speakerPtr.get() && a_player->GetDistance(speakerPtr.get()) > 1000.0f) {
+			const auto a_player = RE::PlayerCharacter::GetSingleton();
+			if (speakerPtr && speakerPtr.get() && a_player && a_player->GetDistance(speakerPtr.get()) > 1000.0f) {
 				sFastTravelType = "";
 				speakerPtr.reset(); // Deallocate memory
 			}
 		}
 		// Use loading menu instead of TESFastTravelEndEvent for cases where fast travel is being done with moveto functionality
 		// From limited testing TESFastTravelEndEvent fires before loading menu closes
-		if (!a_event->opening) {
-			if (!string::is_empty(sFastTravelType.c_str())) {
-				std::string sFastTravelType_temp = sFastTravelType;
-				sFastTravelType = "";
-				// TEST
-				logger::info("fast travel end event with type: {}", sFastTravelType_temp);
-				auto a_player = RE::PlayerCharacter::GetSingleton();
-				// From testing cell is already attached when loading menu closes
-				// But better to check anyway
-				if (!a_player || !a_player->parentCell) {
-					return EventResult::kContinue;
-				}
-				// Distance check based on the setting
-				auto distanceTraveled = GetDistanceTraveled();
-				if (distanceTraveled < Settings::fMinimumDistance) {
-					return EventResult::kContinue;
-				}
-				// Get the relevant cell now so we don't have to re-check it later in MessageBoxHandler
-				nearestCellWithLocation = Utils::GetCellNearPlayerWithLocation(a_player->parentCell);
-				// Additional checks for mods that interrupt fast travel and resume it after some kind of event
-				// Fast traveling through map only
-				if (mapMarkerPtr && mapMarkerPtr->parentCell) {
-					auto mapMarkerCell = mapMarkerPtr->parentCell;
-					// Check against the parent location of the map marker, since the nearest cell can be a different one
-					// Fall-back if no parent loc: check direct location
-					if (mapMarkerCell->GetLocation()) {
-						auto mapMarkerCellLocParentLoc = mapMarkerCell->GetLocation()->parentLoc;
-						if ((mapMarkerCellLocParentLoc && Utils::GetCellIsInLocation(nearestCellWithLocation, mapMarkerCellLocParentLoc->GetFullName()))
-							|| (!mapMarkerCellLocParentLoc && Utils::GetCellIsInLocation(nearestCellWithLocation, mapMarkerCell->GetLocation()->GetFullName()))) {
-							SetupMessageBoxOnFastTravelEndEvent(sFastTravelType_temp);
-						}
+		if (!a_event->opening && !string::is_empty(sFastTravelType.c_str())) {
+			// If the fast travel type is toggled off then don't do the event
+			if (!Settings::GetSingleton()->IsFastTravelTypeEnabled(sFastTravelType)) {
+				ResetVars();
+				return EventResult::kContinue;
+			}
+			const auto a_player = RE::PlayerCharacter::GetSingleton();
+			// From testing cell is already attached when loading menu closes
+			// But better to check anyway
+			if (!a_player || !a_player->parentCell) {
+				ResetVars();
+				return EventResult::kContinue;
+			}
+			// Distance check based on the setting
+			if (GetDistanceTraveled() < Settings::fMinimumDistance) {
+				ResetVars();
+				return EventResult::kContinue;
+			}
+			const std::string sFastTravelType_temp = sFastTravelType;
+			sFastTravelType = "";
+			// Get the relevant cell now so we don't have to re-check it later in MessageBoxHandler
+			nearestCellWithLocation = Utils::GetCellNearPlayerWithLocation(a_player->parentCell);
+			// Additional checks for mods that interrupt fast travel and resume it after some kind of event
+			// (Fast traveling through map only)
+			if (mapMarkerPtr && mapMarkerPtr->parentCell) {
+				auto mapMarkerCell = mapMarkerPtr->parentCell;
+				// Check against the parent location of the map marker, since the nearest cell can be a different one
+				// Fall-back if no parent loc: check direct location
+				if (mapMarkerCell->GetLocation()) {
+					auto mapMarkerCellLocParentLoc = mapMarkerCell->GetLocation()->parentLoc;
+					if ((mapMarkerCellLocParentLoc && Utils::GetCellIsInLocation(nearestCellWithLocation, mapMarkerCellLocParentLoc->GetFullName()))
+						|| (!mapMarkerCellLocParentLoc && Utils::GetCellIsInLocation(nearestCellWithLocation, mapMarkerCell->GetLocation()->GetFullName()))) {
+						SetupMessageBoxOnFastTravelEndEvent(sFastTravelType_temp);
 					}
-					mapMarkerPtr.reset(); // Deallocate memory
 				}
-				// Everything else pretty much same
-				// Map (ini specified activators), Carriage, Ferry, Other
-				else {
-					SetupMessageBoxOnFastTravelEndEvent(sFastTravelType_temp);
-				}
+				mapMarkerPtr.reset(); // Deallocate memory
+			}
+			// Everything else pretty much same
+			// Map (ini specified activators), Carriage, Ferry, Other
+			else {
+				SetupMessageBoxOnFastTravelEndEvent(sFastTravelType_temp);
 			}
 		}
 	}
@@ -175,17 +178,17 @@ FastTravelHandler::EventResult FastTravelHandler::ProcessEvent(const RE::TESActi
 
 void FastTravelHandler::FastTravelConfirm(RE::FastTravelConfirmCallback* a_this, std::uint8_t a_button)
 {
-	// TEST
-	logger::info("button in confirm: {}", a_button);
 	if (a_button == 1) {
+		const auto a_fastTravelHandler = FastTravelHandler::GetSingleton();
 		// Reset the timer in case the player decided to use the map instead of an activator
 		if (fThirtySecondsCheck > 0.0f) {
 			fThirtySecondsCheck = 0.0f;
-			FastTravelHandler::GetSingleton()->speakerPtr.reset();
+			a_fastTravelHandler->speakerPtr.reset();
 		}
-		auto mapMarker = a_this->mapMenu->GetRuntimeData()->mapMarker.get();
-		FastTravelHandler::GetSingleton()->mapMarkerPtr = mapMarker;
-		FastTravelHandler::GetSingleton()->playerMapTravelDistance = RE::PlayerCharacter::GetSingleton()->GetDistance(mapMarker.get());
+		// Different struct for VR in RuntimeData()
+		auto mapMarker = !REL::Module::IsVR() ? a_this->mapMenu->GetRuntimeData()->mapMarker.get() : a_this->mapMenu->GetVRRuntimeData()->mapMarker.get();
+		a_fastTravelHandler->mapMarkerPtr = mapMarker;
+		a_fastTravelHandler->playerMapTravelDistance = RE::PlayerCharacter::GetSingleton()->GetDistance(mapMarker.get());
 		sFastTravelType = "Map";
 	}
 
@@ -197,9 +200,10 @@ void FastTravelHandler::Update(RE::PlayerCharacter* a_player, float a_delta)
 	_Update(a_player, a_delta);
 
 	// Give the player 30 seconds to initialize fast travel on non-map events
-	// PlayerCharacter::Update doesn't fire while the map is open, so there is time to browse the map
+	// PlayerCharacter::Update doesn't fire while the game is paused, so there is time to browse the map
 	// for mods that might let the player choose a destination from the map
-	if (fThirtySecondsCheck > 0.0f) {
+	// Exception: Unpaused Menus...
+	if (fThirtySecondsCheck > 0.0f && !RE::UI::GetSingleton()->IsMenuOpen(RE::MapMenu::MENU_NAME)) {
 		fThirtySecondsCheck -= RE::BSTimer::GetSingleton()->realTimeDelta;
 		// 30 seconds passed without initiating fast travel, no event
 		// Keep in mind the few second animation while getting on carriages etc.
@@ -208,7 +212,7 @@ void FastTravelHandler::Update(RE::PlayerCharacter* a_player, float a_delta)
 			FastTravelHandler::GetSingleton()->speakerPtr.reset(); // Deallocate memory
 		}
 	}
-	// Show message box 1 second after loading menu closes on fast traveling
+	// Show message box 1.5 seconds after loading menu closes on fast traveling
 	if (fTimerAfterLoading > 0.0f) {
 		fTimerAfterLoading -= RE::BSTimer::GetSingleton()->realTimeDelta;
 		if (fTimerAfterLoading <= 0.0f) {
@@ -219,12 +223,14 @@ void FastTravelHandler::Update(RE::PlayerCharacter* a_player, float a_delta)
 
 void FastTravelHandler::ResetVars()
 {
-	if (!string::is_empty(sFastTravelType.c_str())) {
-		auto fastTravelHandler = FastTravelHandler::GetSingleton();
-		fastTravelHandler->sFastTravelType = "";
-		fastTravelHandler->fThirtySecondsCheck = 0.0f;
-		fastTravelHandler->nearestCellWithLocation = nullptr;
-		fastTravelHandler->mapMarkerPtr.reset();
-		fastTravelHandler->speakerPtr.reset();
+	const auto a_fastTravelHandler = FastTravelHandler::GetSingleton();
+	if (!string::is_empty(a_fastTravelHandler->sFastTravelType.c_str())) {
+		a_fastTravelHandler->sFastTravelType = "";
+		a_fastTravelHandler->fThirtySecondsCheck = 0.0f;
+		a_fastTravelHandler->fTimerAfterLoading = 0.0f;
+		a_fastTravelHandler->playerMapTravelDistance = 0.0f;
+		a_fastTravelHandler->nearestCellWithLocation = nullptr;
+		a_fastTravelHandler->mapMarkerPtr.reset();
+		a_fastTravelHandler->speakerPtr.reset();
 	}
 }

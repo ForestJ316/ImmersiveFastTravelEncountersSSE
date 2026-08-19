@@ -1,9 +1,9 @@
 #include "MessageBoxHandler.h"
 
-#include "FastTravelHandler.h"
 #include "Settings.h"
-#include "Functions.h"
 #include "Utils.h"
+#include "Functions.h"
+#include "FastTravelHandler.h"
 
 MessageBoxHandler::CurrentEncounterData MessageBoxHandler::currentEncounterData = {};
 
@@ -25,10 +25,10 @@ void MessageBoxHandler::Run(std::uint8_t a_button)
 void MessageBoxHandler::Show(const std::string& a_bodyText, const std::vector<std::string>& a_buttonText, std::function<void(std::uint8_t)> a_callback)
 {
 	SKSE::GetTaskInterface()->AddTask([a_bodyText, a_buttonText, a_callback]() {
-		auto* factoryManager = RE::MessageDataFactoryManager::GetSingleton();
-		auto* uiStringHolder = RE::InterfaceStrings::GetSingleton();
-		auto* factory = factoryManager->GetCreator<RE::MessageBoxData>(uiStringHolder->messageBoxData);
-		auto* messageBox = factory->Create();
+		const auto a_factoryManager = RE::MessageDataFactoryManager::GetSingleton();
+		const auto a_uiStringHolder = RE::InterfaceStrings::GetSingleton();
+		auto factory = a_factoryManager->GetCreator<RE::MessageBoxData>(a_uiStringHolder->messageBoxData);
+		auto messageBox = factory->Create();
 		messageBox->callback = RE::make_smart<MessageBoxHandler>(a_callback);
 		messageBox->bodyText = a_bodyText;
 		for (const auto& text : a_buttonText) {
@@ -194,7 +194,6 @@ void MessageBoxHandler::SetRandomItemStrings(const std::vector<std::pair<RE::TES
 	}
 }
 
-
 void MessageBoxHandler::PlayEncounterSoundFX(std::string a_soundPath, bool a_setup)
 {
 	if (a_setup) {
@@ -225,12 +224,11 @@ void MessageBoxHandler::SetupCurrentEncounterData(const std::string& a_fastTrave
 	}
 	// Roll the chance to show an encounter based on the setting
 	auto randomPercent = clib_util::RNG().generate<std::uint16_t>(1, 100);
-	// TEST
-	logger::info("encounter chance: {}, rand perc: {}", Settings::iEncounterChance, randomPercent);
 	if (Settings::iEncounterChance == 0 || randomPercent > Settings::iEncounterChance) {
 		return;
 	}
-	const auto& EncounterCache = Settings::GetSingleton()->GetEncounterCache();
+	const auto a_settings = Settings::GetSingleton();
+	const auto& EncounterCache = a_settings->GetEncounterCache();
 	if (auto encounters = EncounterCache.find(a_fastTravelType); encounters != EncounterCache.end()) {
 		std::vector<Settings::CachedEncounterData> validEncounters;
 		auto& nearestCellWithLocation = FastTravelHandler::GetSingleton()->GetNearestCellWithLocation();
@@ -240,15 +238,15 @@ void MessageBoxHandler::SetupCurrentEncounterData(const std::string& a_fastTrave
 				validEncounters.insert_range(validEncounters.end(), encounter.second);
 			}
 			// Second - Check if player is in a valid hold
-			else if (Settings::GetSingleton()->IsValidHold(encounter.first) && Utils::GetCellIsInLocation(nearestCellWithLocation, encounter.first)) {
+			else if (a_settings->IsValidHold(encounter.first) && Utils::GetCellIsInLocation(nearestCellWithLocation, encounter.first)) {
 				validEncounters.insert_range(validEncounters.end(), encounter.second);
 				// We don't care about the check after this, therefore reset the cell object
 				nearestCellWithLocation = nullptr;
 			}
-			// TODO
+			// TODO (maybe if there is a use-case)
 			// Third - Check activator
 		}
-		auto survivalEnabled = Settings::GetSingleton()->IsSurvivalEnabled();
+		const auto survivalEnabled = a_settings->IsSurvivalEnabled();
 		// If Survival Mode is on, remove all non-Survival Mode encounters
 		// If Survival Mode is off, remove all Survival Mode encounters
 		std::erase_if(validEncounters, [survivalEnabled](Settings::CachedEncounterData& encounter) {
@@ -268,7 +266,7 @@ void MessageBoxHandler::SetupCurrentEncounterData(const std::string& a_fastTrave
 			if (!string::is_empty(randomEncounter.soundFX.c_str())) {
 				PlayEncounterSoundFX(randomEncounter.soundFX, true);
 			}
-			currentEncounterData = { randomEncounter.title, randomEncounter.message, randomEncounter.choices, randomEncounter.soundFX };
+			currentEncounterData = { true, randomEncounter.title, randomEncounter.message, randomEncounter.choices, randomEncounter.soundFX };
 		}
 	}
 }
@@ -280,11 +278,13 @@ const MessageBoxHandler::CurrentEncounterData& MessageBoxHandler::GetCurrentEnco
 
 void MessageBoxHandler::ResetCurrentEncounterData()
 {
-	auto messageBoxHandler = MessageBoxHandler::GetSingleton();
-	messageBoxHandler->currentEncounterData = {};
-	messageBoxHandler->soundHandle = {};
-	messageBoxHandler->iRandom = 0;
-	messageBoxHandler->iDualRandom = { 0, 0 };
-	messageBoxHandler->randomItemList.clear();
-	Functions::ResetVars();
+	const auto a_messageBoxHandler = MessageBoxHandler::GetSingleton();
+	if (a_messageBoxHandler->currentEncounterData.isSetup) {
+		a_messageBoxHandler->currentEncounterData = {};
+		a_messageBoxHandler->soundHandle = {};
+		a_messageBoxHandler->iRandom = 0;
+		a_messageBoxHandler->iDualRandom = { 0, 0 };
+		a_messageBoxHandler->randomItemList.clear();
+		Functions::ResetVars();
+	}
 }

@@ -43,6 +43,7 @@ private:
 
 	struct CurrentEncounterData
 	{
+		bool isSetup = false;
 		std::string title = "";
 		std::string message = "";
 		json choices;

@@ -1,7 +1,7 @@
 #include "Functions.h"
 
-#include "Utils.h"
 #include "Settings.h"
+#include "Utils.h"
 #include "MessageBoxHandler.h"
 
 #include <algorithm>
@@ -10,19 +10,28 @@
 std::vector<std::pair<RE::TESForm*, std::int32_t>> Functions::selectedRandomItems = {};
 std::vector<RE::ActiveEffect*> Functions::currentActiveEffects = {};
 
-void Functions::CacheActorValueNames()
+void Functions::Initialize()
 {
-	auto AVList = RE::ActorValueList::GetSingleton();
+	logger::info("Initializing Functions...");
+	const auto a_AVList = RE::ActorValueList::GetSingleton();
 	for (auto& skillAV : Functions::PLAYER_SKILL_AV) {
-		if (skillAV.first != AVList->GetActorValueName(skillAV.second)) {
-			skillAV.first = AVList->GetActorValueName(skillAV.second);
+		if (skillAV.first != a_AVList->GetActorValueName(skillAV.second)) {
+			skillAV.first = a_AVList->GetActorValueName(skillAV.second);
 		}
 	}
 	for (auto& statAV : Functions::PLAYER_STAT_AV) {
-		if (statAV.first != AVList->GetActorValueName(statAV.second)) {
-			statAV.first = AVList->GetActorValueName(statAV.second);
+		if (statAV.first != a_AVList->GetActorValueName(statAV.second)) {
+			statAV.first = a_AVList->GetActorValueName(statAV.second);
 		}
 	}
+	const auto a_dataHandler = RE::TESDataHandler::GetSingleton();
+	if (!a_dataHandler) {
+		logger::error("Functions::Initialize: TESDataHandler not found.");
+		return;
+	}
+	spell_DummyHitEvent = a_dataHandler->LookupForm<RE::SpellItem>(0x813, "ImmersiveFastTravelEncountersSSE.esp");
+	spell_DummyRestoreEffect = a_dataHandler->LookupForm<RE::SpellItem>(0x815, "ImmersiveFastTravelEncountersSSE.esp");
+	logger::info("...Functions done initializing.");
 }
 
 void Functions::ResetVars()
@@ -50,6 +59,7 @@ constexpr Functions::Function_Name Functions::GetFunctionHash(const std::string&
 	if (a_str == "HasSpell") return Function_Name::HasSpell;
 	if (a_str == "HasActiveSpell") return Function_Name::HasActiveSpell;
 	if (a_str == "CastSpellChance") return Function_Name::CastSpellChance;
+	if (a_str == "RemoveActiveSpell") return Function_Name::RemoveActiveSpell;
 	if (a_str == "DamageAV") return Function_Name::DamageAV;
 	if (a_str == "RestoreAV") return Function_Name::RestoreAV;
 	if (a_str == "ModHungerPercent") return Function_Name::ModHungerPercent;
@@ -146,6 +156,10 @@ std::tuple<bool, int, int, Functions::FormAndAmountType> Functions::DoFunction(c
 			Functions::CastSpellChance(args, a_type);
 			break;
 		}
+		case Function_Name::RemoveActiveSpell: {
+			Functions::RemoveActiveSpell(args, a_type);
+			break;
+		}
 		case Function_Name::DamageAV: {
 			Functions::DamageAV(args, a_type);
 			break;
@@ -195,12 +209,12 @@ bool Functions::HasItem(const std::vector<std::string>& a_args, const std::strin
 	}
 	auto amount = string::to_num<std::int32_t>(a_args.at(2));
 
-	const auto dataHandler = RE::TESDataHandler::GetSingleton();
-	if (!dataHandler) {
+	const auto a_dataHandler = RE::TESDataHandler::GetSingleton();
+	if (!a_dataHandler) {
 		logger::error("HasItem error: TESDataHandler not found.");
 		return false;
 	}
-	auto item = dataHandler->LookupForm(formPair.first, formPair.second);
+	auto item = a_dataHandler->LookupForm(formPair.first, formPair.second);
 	if (!item) {
 		logger::error("HasItem error: item with FormID {} for Mod {} does not exist.", formPair.first, formPair.second);
 		return false;
@@ -239,12 +253,12 @@ void Functions::AddItem(const std::vector<std::string>& a_args, const std::strin
 	}
 	auto amount = string::to_num<std::int32_t>(a_args.at(2));
 
-	const auto dataHandler = RE::TESDataHandler::GetSingleton();
-	if (!dataHandler) {
+	const auto a_dataHandler = RE::TESDataHandler::GetSingleton();
+	if (!a_dataHandler) {
 		logger::error("AddItem error: TESDataHandler not found.");
 		return;
 	}
-	auto item = dataHandler->LookupForm(formPair.first, formPair.second);
+	auto item = a_dataHandler->LookupForm(formPair.first, formPair.second);
 	if (!item) {
 		logger::error("AddItem error: item with FormID {} for Mod {} does not exist.", formPair.first, formPair.second);
 		return;
@@ -276,12 +290,12 @@ void Functions::RemoveItem(const std::vector<std::string>& a_args, const std::st
 	}
 	auto amount = string::to_num<std::int32_t>(a_args.at(2));
 
-	const auto dataHandler = RE::TESDataHandler::GetSingleton();
-	if (!dataHandler) {
+	const auto a_dataHandler = RE::TESDataHandler::GetSingleton();
+	if (!a_dataHandler) {
 		logger::error("RemoveItem error: TESDataHandler not found.");
 		return;
 	}
-	auto item = dataHandler->LookupForm(formPair.first, formPair.second);
+	auto item = a_dataHandler->LookupForm(formPair.first, formPair.second);
 	if (!item) {
 		logger::error("RemoveItem error: item with FormID {} for Mod {} does not exist.", formPair.first, formPair.second);
 		return;
@@ -321,8 +335,8 @@ Functions::FormAndAmountType Functions::AddRandomItem(const std::vector<std::str
 	// Keep adding to the item list until it's time to exit the encounter
 	// In case there are nested outcomes with AddRandomItem...
 	if (!currentEncounterData.exit) {
-		const auto dataHandler = RE::TESDataHandler::GetSingleton();
-		if (!dataHandler) {
+		const auto a_dataHandler = RE::TESDataHandler::GetSingleton();
+		if (!a_dataHandler) {
 			logger::error("AddRandomItem error: TESDataHandler not found.");
 			return {};
 		}
@@ -369,7 +383,7 @@ Functions::FormAndAmountType Functions::AddRandomItem(const std::vector<std::str
 				logger::error("AddRandomItem error: {{item, amount}} was given an invalid Form argument.");
 				return {};
 			}
-			auto item = dataHandler->LookupForm(formPair.first, formPair.second);
+			auto item = a_dataHandler->LookupForm(formPair.first, formPair.second);
 			if (!item) {
 				logger::error("AddRandomItem error: item with FormID {} for Mod {} does not exist.", formPair.first, formPair.second);
 				return {};
@@ -451,13 +465,15 @@ void Functions::RewardSkillPercent(const std::vector<std::string>& a_args, const
 		logger::error("RewardSkillPercent error: function was given the wrong skill name.");
 		return;
 	}
-	auto skillAVInfo = RE::ActorValueList::GetSingleton()->GetActorValueInfo(skillAV);
+	const auto skillAVInfo = RE::ActorValueList::GetSingleton()->GetActorValueInfo(skillAV);
 	if (!skillAVInfo->skill) {
 		logger::error("RewardSkillPercent error: could not find information of the specified skill.");
 		return;
 	}
 
-	auto skillData = RE::PlayerCharacter::GetSingleton()->GetPlayerRuntimeData().skills->data->skills;
+	const auto a_player = RE::PlayerCharacter::GetSingleton();
+	// Different struct for VR in RuntimeData()
+	auto skillData = !REL::Module::IsVR() ? a_player->GetPlayerRuntimeData().skills->data->skills : a_player->GetVRPlayerRuntimeData()->skills->data->skills;
 	// PlayerSkills are numbered 6 less than the actual skill Actor Values
 	auto playerSkillNum = std::to_underlying(skillAV) - 6;
 	// In certain cases levelThreshold can be 0, then just don't execute anything
@@ -477,7 +493,7 @@ void Functions::RewardSkillPercent(const std::vector<std::string>& a_args, const
 		else {
 			xpToAdd = (xpToAdd - skillAVInfo->skill->offsetMult) / skillAVInfo->skill->useMult;
 		}
-		RE::PlayerCharacter::GetSingleton()->AddSkillExperience(skillAV, xpToAdd);
+		a_player->AddSkillExperience(skillAV, xpToAdd);
 		auto notification = std::format("+{} XP", a_args.at(1));
 		RE::SendHUDMessage::ShowHUDMessage(notification.c_str());
 	}
@@ -704,12 +720,12 @@ bool Functions::HasSpell(const std::vector<std::string>& a_args, const std::stri
 		logger::error("HasSpell error: function was given an invalid Form argument.");
 		return false;
 	}
-	const auto dataHandler = RE::TESDataHandler::GetSingleton();
-	if (!dataHandler) {
+	const auto a_dataHandler = RE::TESDataHandler::GetSingleton();
+	if (!a_dataHandler) {
 		logger::error("HasSpell error: TESDataHandler not found.");
 		return false;
 	}
-	auto a_spell = dataHandler->LookupForm<RE::SpellItem>(formPair.first, formPair.second);
+	auto a_spell = a_dataHandler->LookupForm<RE::SpellItem>(formPair.first, formPair.second);
 	if (!a_spell) {
 		logger::error("HasSpell error: spell with FormID {} for Mod {} does not exist.", formPair.first, formPair.second);
 		return false;
@@ -732,12 +748,12 @@ bool Functions::HasActiveSpell(const std::vector<std::string>& a_args, const std
 		logger::error("HasActiveSpell error: function was given an invalid Form argument.");
 		return false;
 	}
-	const auto dataHandler = RE::TESDataHandler::GetSingleton();
-	if (!dataHandler) {
+	const auto a_dataHandler = RE::TESDataHandler::GetSingleton();
+	if (!a_dataHandler) {
 		logger::error("HasActiveSpell error: TESDataHandler not found.");
 		return false;
 	}
-	auto a_spell = dataHandler->LookupForm<RE::SpellItem>(formPair.first, formPair.second);
+	auto a_spell = a_dataHandler->LookupForm<RE::SpellItem>(formPair.first, formPair.second);
 	if (!a_spell) {
 		logger::error("HasActiveSpell error: spell with FormID {} for Mod {} does not exist.", formPair.first, formPair.second);
 		return false;
@@ -768,7 +784,7 @@ bool Functions::HasActiveSpell(const std::vector<std::string>& a_args, const std
 								| std::ranges::to<std::vector<RE::ActiveEffect*>>();
 		}
 	}
-	return std::ranges::any_of(currentActiveEffects, [&](const auto& a_effect) {
+	return std::ranges::any_of(currentActiveEffects, [a_spell](const auto& a_effect) {
 		return a_effect && a_effect->spell == a_spell;
 	});
 
@@ -800,35 +816,96 @@ void Functions::CastSpellChance(const std::vector<std::string>& a_args, const st
 	}
 	auto randomPercentage = percentage >= 100 ? 100 : clib_util::RNG().generate<std::uint16_t>(1, 100);
 	if (percentage >= randomPercentage) {
-		const auto dataHandler = RE::TESDataHandler::GetSingleton();
-		if (!dataHandler) {
+		const auto a_dataHandler = RE::TESDataHandler::GetSingleton();
+		if (!a_dataHandler) {
 			logger::error("CastSpellChance error: TESDataHandler not found.");
 			return;
 		}
-		auto spell = dataHandler->LookupForm<RE::SpellItem>(formPair.first, formPair.second);
+		auto spell = a_dataHandler->LookupForm<RE::SpellItem>(formPair.first, formPair.second);
 		if (!spell) {
 			logger::error("CastSpellChance error: spell with FormID {} for Mod {} does not exist.", formPair.first, formPair.second);
 			return;
 		}
+		
+		const auto a_player = RE::PlayerCharacter::GetSingleton();
 		// Don't stack the effects, reset the duration instead (dispel method)
 		// Don't need to do this with Peak Value Modifier effects as they don't stack
-		auto magicTarget = RE::PlayerCharacter::GetSingleton()->AsMagicTarget();
+		std::vector<RE::EffectSetting*> hostileEffects = {};
+		bool bIsDispelled = false;
+		auto magicTarget = a_player->AsMagicTarget();
 		for (const auto& a_effect : spell->effects) {
-			if (!a_effect->baseEffect->HasArchetype(RE::EffectSetting::Archetype::kPeakValueModifier) && magicTarget->HasMagicEffect(a_effect->baseEffect)) {
-				auto playerHandle = RE::PlayerCharacter::GetSingleton()->GetHandle();
+			// Use a bool flag for dispelled since I'm not sure how intensive HasMagicEffect() check is (haven't RE'd it)
+			if (!bIsDispelled && !a_effect->baseEffect->HasArchetype(RE::EffectSetting::Archetype::kPeakValueModifier) && magicTarget->HasMagicEffect(a_effect->baseEffect)) {
+				auto playerHandle = a_player->GetHandle();
 				if (playerHandle) {
-					magicTarget->DispelEffect(spell->As<RE::MagicItem>(), playerHandle);
-					break;
+					magicTarget->DispelEffect(spell, playerHandle);
+					bIsDispelled = true;
+					// If player is in tgm then check for Hostile flag instead
+					if (!a_player->IsGodMode()) {
+						break;
+					}
 				}
 			}
+			// Remove Hostile flag since the effect doesn't apply if player is in tgm
+			if (a_player->IsGodMode() && a_effect->baseEffect->IsHostile()) {
+				hostileEffects.push_back(a_effect->baseEffect);
+				a_effect->baseEffect->data.flags.set(false, RE::EffectSetting::EffectSettingData::Flag::kHostile);
+			}
 		}
-		auto a_caster = RE::PlayerCharacter::GetSingleton()->GetMagicCaster(RE::MagicSystem::CastingSource::kInstant);
+		auto a_caster = a_player->GetMagicCaster(RE::MagicSystem::CastingSource::kInstant);
 		// Passing 0.0f to a_magnitudeOverride keeps the original magnitudes of the effects
-		a_caster->CastSpellImmediate(spell->As<RE::MagicItem>(), false, RE::PlayerCharacter::GetSingleton(), 1.0f, false, 0.0f, nullptr);
+		a_caster->CastSpellImmediate(spell, false, a_player, 1.0f, false, 0.0f, nullptr);
 		auto spellName = spell->GetFullName();
 		if (!string::is_empty(spellName)) {
 			auto notification = std::format("You have gained {}", spellName);
 			RE::SendHUDMessage::ShowHUDMessage(notification.c_str());
+		}
+		// Reset back the Hostile flags for effects that had it removed
+		for (const auto& a_effect : hostileEffects) {
+			a_effect->data.flags.set(true, RE::EffectSetting::EffectSettingData::Flag::kHostile);
+		}
+	}
+}
+
+void Functions::RemoveActiveSpell(const std::vector<std::string>& a_args, const std::string& a_type)
+{
+	if (a_type != "Outcome") {
+		logger::error("RemoveActiveSpell error: function is an \"Outcome\" function only.");
+		return;
+	}
+	if (a_args.size() != 2) {
+		logger::error("RemoveActiveSpell error: function was given the wrong amount of arguments.");
+		return;
+	}
+	auto formPair = Utils::GetFormIDWithFile(a_args.at(1));
+	if (formPair == std::pair<std::uint32_t, std::string>()) {
+		logger::error("RemoveActiveSpell error: function was given an invalid Form argument.");
+		return;
+	}
+	const auto a_dataHandler = RE::TESDataHandler::GetSingleton();
+	if (!a_dataHandler) {
+		logger::error("RemoveActiveSpell error: TESDataHandler not found.");
+		return;
+	}
+	auto a_spell = a_dataHandler->LookupForm<RE::SpellItem>(formPair.first, formPair.second);
+	if (!a_spell) {
+		logger::error("RemoveActiveSpell error: spell with FormID {} for Mod {} does not exist.", formPair.first, formPair.second);
+		return;
+	}
+	const auto a_player = RE::PlayerCharacter::GetSingleton();
+	auto magicTarget = a_player->AsMagicTarget();
+	for (const auto& a_effect : a_spell->effects) {
+		if (magicTarget->HasMagicEffect(a_effect->baseEffect)) {
+			auto playerHandle = a_player->GetHandle();
+			if (playerHandle) {
+				magicTarget->DispelEffect(a_spell, playerHandle);
+				auto spellName = a_spell->GetFullName();
+				if (!string::is_empty(spellName)) {
+					auto notification = std::format("{} has been removed", spellName);
+					RE::SendHUDMessage::ShowHUDMessage(notification.c_str());
+				}
+				break;
+			}
 		}
 	}
 }
@@ -863,15 +940,21 @@ void Functions::DamageAV(const std::vector<std::string>& a_args, const std::stri
 		logger::error("DamageAV error: function was given the wrong actor value name. {} hasn't been found.", avName);
 		return;
 	}
-	auto a_player = RE::PlayerCharacter::GetSingleton();
+	const auto a_player = RE::PlayerCharacter::GetSingleton();
 	// Make sure to not go below 1
 	if (auto a_avOwner = a_player->AsActorValueOwner()) {
 		auto currentAVAmount = a_avOwner->GetActorValue(statAV);
 		if (currentAVAmount + 1.0f > amount) {
+
 			a_avOwner->DamageActorValue(statAV, amount);
 		}
 		else {
 			a_avOwner->DamageActorValue(statAV, currentAVAmount - 1.0f);
+		}
+		// Do a hit visual/sound
+		if (spell_DummyHitEvent) {
+			auto a_caster = a_player->GetMagicCaster(RE::MagicSystem::CastingSource::kInstant);
+			a_caster->CastSpellImmediate(spell_DummyHitEvent, false, a_player, 1.0f, true, 0.0f, nullptr);
 		}
 	}
 }
@@ -906,10 +989,15 @@ void Functions::RestoreAV(const std::vector<std::string>& a_args, const std::str
 		logger::error("RestoreAV error: function was given the wrong actor value name. {} hasn't been found.", avName);
 		return;
 	}
-	auto a_player = RE::PlayerCharacter::GetSingleton();
-	// RestoreActorValue will not go above max health
+	const auto a_player = RE::PlayerCharacter::GetSingleton();
+	// RestoreActorValue will not go above max actor value
 	if (auto a_avOwner = a_player->AsActorValueOwner()) {
 		a_avOwner->RestoreActorValue(statAV, amount);
+		// Show a restore visual
+		if (spell_DummyRestoreEffect) {
+			auto a_caster = a_player->GetMagicCaster(RE::MagicSystem::CastingSource::kInstant);
+			a_caster->CastSpellImmediate(spell_DummyRestoreEffect, false, a_player, 1.0f, false, 0.0f, nullptr);
+		}
 	}
 }
 

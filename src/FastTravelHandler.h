@@ -14,19 +14,19 @@ public:
 		return std::addressof(singleton);
 	}
 	virtual EventResult ProcessEvent(const RE::MenuOpenCloseEvent* a_event, RE::BSTEventSource<RE::MenuOpenCloseEvent>*) override;
+	// Cases where a dialogue was initiated, but the player proceeded to enter/exit interior instead
 	virtual EventResult ProcessEvent(const RE::TESActivateEvent* a_event, RE::BSTEventSource<RE::TESActivateEvent>*) override;
 
 	void Initialize();
 	// Getter for MessageBoxHandler
 	RE::TESObjectCELL*& GetNearestCellWithLocation();
-	// Reset vars on re-load game
 	void ResetVars();
 
 private:
 	// Confirm fast travel on the map
 	static void FastTravelConfirm(RE::FastTravelConfirmCallback* a_this, std::uint8_t a_button);
 	static inline REL::Relocation<decltype(FastTravelConfirm)> _FastTravelConfirm;
-
+	// Do timer checks on the main thread instead of spinning up a separate one
 	static void Update(RE::PlayerCharacter* a_player, float a_delta);
 	static inline REL::Relocation<decltype(Update)> _Update;
 
