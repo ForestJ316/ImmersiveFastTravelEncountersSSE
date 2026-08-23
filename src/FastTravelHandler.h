@@ -20,7 +20,7 @@ public:
 	void Initialize();
 	// Getter for MessageBoxHandler
 	RE::TESObjectCELL*& GetNearestCellWithLocation();
-	void ResetVars();
+	void ResetCurrentFastTravelData();
 
 private:
 	// Confirm fast travel on the map
@@ -31,19 +31,26 @@ private:
 	static inline REL::Relocation<decltype(Update)> _Update;
 
 	float GetDistanceTraveled();
-	void SetupMessageBoxOnFastTravelEndEvent(std::string a_fastTravelType);
+	void SetupMessageBoxOnFastTravelEndEvent(std::string a_travelType);
 
-	RE::TESObjectCELL* nearestCellWithLocation = nullptr;
-	// Have to do additional checks for mods that might interrupt fast travel and then resume it after some kind of event
-	// (Map fast travel only)
-	RE::NiPointer<RE::TESObjectREFR> mapMarkerPtr = nullptr;
-	static std::string sFastTravelType;
-	// Stored distance for map fast travel distance check
-	float playerMapTravelDistance = 0.0f;
+	
 	// Give the player 30 seconds to initiate fast travel with an activator
-	static float fThirtySecondsCheck;
-	// Store the activator speaker for distance check for activator based types of fast travel
-	RE::NiPointer<RE::TESObjectREFR> speakerPtr = nullptr;
-	// Timer to show message box 1 second after loading menu closes
-	static float fTimerAfterLoading;
+	static inline float fThirtySecondsCheck = 0.0f;
+	// Timer to show message box 1.5 seconds after loading menu closes
+	static inline float fTimerAfterLoading = 0.0f;
+	// Case for courier (or any other insta-dialogue) appearing after fast travel, have a flag for it
+	static inline bool bDialogueBeforeEvent = false;
+	struct FastTravelData
+	{
+		std::string travelType = "";
+		// Have to do additional checks for mods that might interrupt fast travel and then resume it after some kind of event
+		// (Map fast travel only)
+		RE::NiPointer<RE::TESObjectREFR> mapMarkerPtr = nullptr;
+		// Stored distance for map fast travel distance check
+		float mapTravelDistance = 0.0f;
+		// Store the activator speaker for distance check for activator based types of fast travel
+		RE::NiPointer<RE::TESObjectREFR> speakerPtr = nullptr;
+		RE::TESObjectCELL* nearestCellWithLoc = nullptr;
+	};
+	static FastTravelData CurrentFastTravel;
 };

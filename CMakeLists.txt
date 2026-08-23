@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 
 
 set(NAME "ImmersiveFastTravelEncountersSSE")
-set(VERSION 1.0.0)
+set(VERSION 1.0.2)
 set(AUTHOR "ForestJ316")
 
 
@@ -150,8 +150,6 @@ add_commonlibsse_plugin(
 		${AUTHOR}
 	VERSION
 		${PROJECT_VERSION}
-	MINIMUM_SKSE_VERSION
-		"1.4.15.0"
     SOURCES
 		${SOURCE_FILES}
 )

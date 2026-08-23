@@ -2,35 +2,83 @@
 
 #include <algorithm>
 
-std::vector<std::string> Utils::GetSplitStrings(const std::string& a_str, std::string_view a_delimiter)
+std::vector<std::string> Utils::SplitString(const std::string& a_str, std::string_view a_delimiter)
 {
 	if (string::is_empty(a_str.c_str())) {
 		return {};
 	}
-	auto splitString = string::split(a_str, a_delimiter);
+	auto splitStr = string::split(a_str, a_delimiter);
 	// Remove leading and trailing spaces
-	std::ranges::for_each(splitString, [](std::string& str) { string::trim(str); });
-	return splitString;
+	std::ranges::for_each(splitStr, [](std::string& str) { string::trim(str); });
+	return splitStr;
 }
 
-std::pair<std::uint32_t, std::string> Utils::GetFormIDWithFile(const std::string& a_formWithFile)
+std::string Utils::GetSeparateNotationRandom(const std::string& a_str, std::string_view a_delimiter)
+{
+	if (string::is_empty(a_str.c_str())) {
+		logger::error("Function was given an empty string.");
+		return "";
+	}
+	const auto randomMinMax = SplitString(a_str, a_delimiter);
+	if (randomMinMax.size() != 2) {
+		logger::error("Function was given an invalid \"min-max\" argument. {} is not correct.", a_str);
+		return "";
+	}
+	if (!string::is_only_digit(randomMinMax.at(0))) {
+		logger::error("Function was given an invalid min amount argument. It must be a number.");
+		return "";
+	}
+	if (!string::is_only_digit(randomMinMax.at(1))) {
+		logger::error("Function was given an invalid max amount argument. It must be a number.");
+		return "";
+	}
+	auto a_min = string::to_num<std::int32_t>(randomMinMax.at(0));
+	auto a_max = string::to_num<std::int32_t>(randomMinMax.at(1));
+	auto randomAmount = clib_util::RNG().generate<std::int32_t>(a_min, a_max);
+	return std::to_string(randomAmount);
+}
+
+void Utils::CleanItemListString(std::string& a_str)
+{
+	string::replace_first_instance(a_str, "{", "");
+	string::replace_first_instance(a_str, "}", "");
+}
+
+std::pair<std::string, std::string> Utils::JoinItemListString(std::string a_itemForm, std::string a_amount)
+{
+	if (string::is_empty(a_itemForm.c_str()) || string::is_empty(a_amount.c_str())) {
+		return {};
+	}
+	if (!a_itemForm.contains("{") || a_itemForm.contains("}") || !a_amount.contains("}") || a_amount.contains("{")) {
+		logger::error("Form {} with amount {} input is invalid.", a_itemForm, a_amount);
+		return {};
+	}
+	CleanItemListString(a_itemForm);
+	CleanItemListString(a_amount);
+	if (a_amount.contains("-")) {
+		a_amount = GetSeparateNotationRandom(a_amount, "-");
+	}
+	return { a_itemForm, a_amount };
+}
+
+const std::pair<std::uint32_t, std::string> Utils::GetFormIDWithFile(const std::string& a_formWithFile)
 {
 	if (string::is_empty(a_formWithFile.c_str())) {
 		logger::error("Form for a specified function is empty.");
-		return std::pair<std::uint32_t, std::string>();
+		return {};
 	}
 	if (!a_formWithFile.contains("|")) {
 		logger::error("Form {} is invalid. It must be 0xFormID|Mod.esp.", a_formWithFile);
-		return std::pair<std::uint32_t, std::string>();
+		return {};
 	}
 	auto formStr = a_formWithFile.substr(0, a_formWithFile.find("|"));
 	if (!string::is_only_hex(formStr)) {
 		logger::error("Form {} is invalid. It must be 0xFormID", formStr);
-		return std::pair<std::uint32_t, std::string>();
+		return {};
 	}
 	auto formID = string::to_num<std::uint32_t>(formStr, true);
 	auto fileName = a_formWithFile.substr(a_formWithFile.find("|") + 1);
-	return std::make_pair(formID, fileName);
+	return { formID, fileName };
 }
 
 bool Utils::GetCellIsInLocation(RE::TESObjectCELL* a_cell, const std::string_view& a_locName)
@@ -38,12 +86,13 @@ bool Utils::GetCellIsInLocation(RE::TESObjectCELL* a_cell, const std::string_vie
 	if (!a_cell || !a_cell->GetLocation()) {
 		return false;
 	}
-	// Exhaust all locations until Tamriel, fail-safe 4 iterations (most cases 2 is enough)
+	// Exhaust all locations until Tamriel, fail-safe 4 iterations (most cases 2 is enough, 3 is possible though)
 	int i = 4;
 	auto currentLoc = a_cell->GetLocation();
 	RE::BSFixedString currentLocName = currentLoc->GetFullName();
 	while (currentLocName != "Tamriel" && i != 0) {
-		if (string::iequals(currentLocName, a_locName)) {
+		// Check against a potential list of holds as well
+		if (string::icontains(currentLocName, a_locName) || string::icontains(a_locName, currentLocName)) {
 			return true;
 		}
 		if (currentLoc->parentLoc) {

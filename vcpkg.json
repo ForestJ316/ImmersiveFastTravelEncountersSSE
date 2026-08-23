@@ -1,6 +1,6 @@
 {
   "name": "immersivefasttravelencounterssse",
-  "version-string": "1.0.0",
+  "version-string": "1.0.2",
   "homepage": "https://github.com/ForestJ316/ImmersiveFastTravelEncountersSSE",
   "license": "GPL-3.0",
   "dependencies": [
@@ -11,5 +11,5 @@
     "spdlog",
     "clib-util"
   ],
-  "builtin-baseline": "40f3c709db80acf154ac4b17a1f83c564ebd022e"
+  "builtin-baseline": "abb6dda5cc32914d2e64d7d72b974dc301d1fc8a"
 }

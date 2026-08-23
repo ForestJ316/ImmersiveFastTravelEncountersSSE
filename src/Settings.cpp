@@ -1,10 +1,8 @@
 #include "Settings.h"
 
-#include "Utils.h"
-
 #include <ClibUtil/SimpleIni.hpp>
 
-Settings::CachedDataType Settings::EncounterCache = {};
+std::unordered_map<std::uint16_t, Settings::EncounterCacheData> Settings::EncounterCache = {};
 std::unordered_map<RE::FormID, std::string> Settings::FastTravelActivatorCache = {};
 
 void Settings::InitializeSettings()
@@ -65,7 +63,7 @@ void Settings::InitializeSettings()
 		ini.Reset(); // Deallocate memory
 	};
 	// For Debug Setting
-	constexpr auto base_ini_path = L"Data/SKSE/Plugins/ImmersiveFastTravelEncountersSSE/ImmersiveFastTravelEncounters_Base.ini";
+	constexpr auto base_ini_path = L"Data/SKSE/Plugins/ImmersiveFastTravelEncountersSSE.ini";
 	const auto InitDebugSetting = [&](std::filesystem::path path) {
 		CSimpleIniA ini;
 		ini.SetUnicode();
@@ -76,21 +74,29 @@ void Settings::InitializeSettings()
 			const auto debugSection = ini.GetSection("Debug");
 			const auto debugData = debugSection->find("iDebugEncounter");
 			if (debugData != debugSection->end() && string::iequals(debugData->first.pItem, "iDebugEncounter")) {
-				std::int16_t debug_temp = string::to_num<std::int16_t>(debugData->second);
-				if (debug_temp > 0) {
-					iDebugEncounter = debug_temp;
-					// If debug is on, then always show the relevant encounter
-					iEncounterChance = 100;
-				}
-				else {
-					// Just put something that will probably never appear
-					// in case the user decided to make an encounter with the key "0"
-					iDebugEncounter = INT16_MIN + 1;
+				if (string::icontains(debugData->second, "|")) {
+					auto debug_split = utils::SplitString(debugData->second, "|");
+					try {
+						std::int16_t debugNum_temp = string::to_num<std::int16_t>(debug_split.at(1));
+						if (debugNum_temp > 0) {
+							iDebugEncounter = { debug_split.at(0), debugNum_temp };
+							// If debug is on, then always show the relevant encounter
+							iEncounterChance = 100;
+						}
+						else {
+							// Just put something that will probably never appear
+							// in case the user decided to make an encounter with the key "0"
+							iDebugEncounter = { debug_split.at(0), INT16_MIN + 1 };
+						}
+					}
+					catch (...) {
+						logger::warn("Error parsing File: {} for iDebugEncounter. Check if the value is in the correct format.", path.string());
+					}
 				}
 			}
 		}
 		else {
-			logger::error("...File Path: {} for ImmersiveFastTravelEncounters_Base.ini doesn't exist.", path.string());
+			logger::error("...File Path: {} for ImmersiveFastTravelEncountersSSE.ini doesn't exist.", path.string());
 		}
 		ini.Reset(); // Deallocate memory
 	};
@@ -104,108 +110,85 @@ void Settings::InitializeSettings()
 	logger::info("...Settings done initializing.");
 }
 
-void Settings::SetFastTravelEncounters(std::string a_type, std::vector<std::string> a_encounterHolds, const json::const_iterator& a_encounter)
+void Settings::SetFastTravelEncounters(const json::const_iterator& a_encounter)
 {
-	CachedEncounterData cachedData;
-	// Optional
-	if (a_encounter.value().contains("Title") && a_encounter.value()["Title"].is_string()) {
-		cachedData.title = a_encounter.value()["Title"];
+	EncounterCacheData encounterData = {};
+	encounterData.encounter = *a_encounter;
+	// Check for conditions
+	// TODO (if there is use-case for it)
+	// Activator from json add later
+	encounterData.travelTypes = utils::SplitString(a_encounter.value()["Type"].get<std::string>(), ",");
+	if (a_encounter.value().contains("Hold") && a_encounter.value()["Hold"].is_string()) {
+		encounterData.holds = a_encounter.value()["Hold"].get<std::string>();
 	}
-	// Mandatory, but fall-back to empty string
-	if (a_encounter.value().contains("Message") && a_encounter.value()["Message"].is_string()) {
-		cachedData.message = a_encounter.value()["Message"];
-	}
-	// Optional, provide means to specify custom text for the exit button. Fall-back to "Ok" button
-	if (a_encounter.value().contains("Choices") && a_encounter.value()["Choices"].is_array()) {
-		cachedData.choices = a_encounter.value()["Choices"];
-	}
-	else {
-		json exitButton;
-		exitButton[""] = { {"Choice", "Ok"} };
-		if (a_encounter.value().contains("Choice") && a_encounter.value()["Choice"].is_string()) {
-			exitButton[""] = { {"Choice", a_encounter.value()["Choice"]} };
-		}
-		cachedData.choices = exitButton;
-	}
-	// Optional
-	if (a_encounter.value().contains("SoundFX") && a_encounter.value()["SoundFX"].is_string()) {
-		cachedData.soundFX = a_encounter.value()["SoundFX"];
-	}
-	// Optional
 	if (a_encounter.value().contains("Survival") && a_encounter.value()["Survival"].is_boolean()) {
-		cachedData.survival = a_encounter.value()["Survival"];
+		encounterData.survival = a_encounter.value()["Survival"];
 	}
-	// Check encounter being valid for multiple holds
-	for (const auto& hold : a_encounterHolds) {
-		holds.push_back(hold);
-		EncounterCache[a_type][hold].push_back(cachedData);
-	}
-	// TODO (maybe if there is a use-case)
-	// Check activator specific
-
-	// Check empty: no holds, no activator
-	if (a_encounterHolds.size() == 0 /* && no activator */) {
-		EncounterCache[a_type][""].push_back(cachedData);
-	}
+	const auto encounterNum = static_cast<std::uint16_t>(EncounterCache.size() + 1);
+	EncounterCache[encounterNum] = encounterData;
 }
 
 void Settings::InitializeEncounterCache()
 {
 	logger::info("Initializing Encounter cache...");
-	// Initialize EncounterData
-	EncounterCache["Map"] = {};
-	EncounterCache["Carriage"] = {};
-	EncounterCache["Ferry"] = {};
-	EncounterCache["Other"] = {};
 	// Populate EncounterData
-	constexpr auto encounters_path = L"Data/SKSE/Plugins/ImmersiveFastTravelEncountersSSE/Encounters.json";
-	const auto InitEncounterCache = [&](std::filesystem::path path) {
+	constexpr auto encounters_dir = L"Data/SKSE/Plugins/ImmersiveFastTravelEncountersSSE";
+	if (!std::filesystem::exists(encounters_dir)) {
+		char dir[256];
+		std::wcstombs(dir, encounters_dir, sizeof(dir));
+		logger::error("...File Directory: {} for encounters doesn't exist.", dir);
+		return;
+	}
+	bool is_initialized = false;
+	const auto InitEncounterFileCache = [&](std::filesystem::path path) {
 		std::ifstream file(path.string().c_str());
 		if (file.is_open()) {
-			json encountersList = json::parse(file);
-			for (json::const_iterator encounter = encountersList.begin(); encounter != encountersList.end(); ++encounter) {
-				// Keys must be numbered only
-				if (string::is_only_digit(encounter.key())) {
-					// iDebugEncounter setting, get only the specified encounter
-					if (iDebugEncounter <= 0 || string::to_num<int>(encounter.key()) == iDebugEncounter) {
-						// Type is a mandatory field
-						if (encounter.value().contains("Type") && encounter.value()["Type"].is_string()) {
-							// Check for conditions
-							// TODO (if there is use-case for it)
-							// Activator from json add later
-							std::vector<std::string> encounterHolds;
-							if (encounter.value().contains("Hold") && encounter.value()["Hold"].is_string()) {
-								encounterHolds = Utils::GetSplitStrings(encounter.value()["Hold"].get<std::string>(), ",");
+			try {
+				json encountersList = json::parse(file);
+				if (encountersList.is_discarded()) {
+					return;
+				}
+				for (json::const_iterator encounter = encountersList.begin(); encounter != encountersList.end(); ++encounter) {
+					// Keys must be numbered only
+					if (string::is_only_digit(encounter.key())) {
+						const auto& [debug_file, debug_num] = iDebugEncounter;
+						// iDebugEncounter setting, get only the specified encounter
+						if (debug_num <= 0 || (debug_file == path.filename() && string::to_num<int>(encounter.key()) == debug_num)) {
+							// Type is a mandatory field
+							if (encounter.value().contains("Type") && encounter.value()["Type"].is_string()) {
+								SetFastTravelEncounters(encounter);
+								is_initialized = true;
 							}
-							// Check for fast travel type
-							auto encounterType = encounter.value()["Type"].get<std::string>();
-							if (encounterType.contains("Map")) {
-								SetFastTravelEncounters("Map", encounterHolds, encounter);
+							else {
+								logger::warn("Skipped encounter {} in file {}. It doesn't have a \"Type\" field which is mandatory.", encounter.key(), path.filename().string().c_str());
 							}
-							if (encounterType.contains("Carriage")) {
-								SetFastTravelEncounters("Carriage", encounterHolds, encounter);
+							// Debug forced encounter added, don't iterate the rest of the json
+							if (debug_num > 0) {
+								break;
 							}
-							if (encounterType.contains("Ferry")) {
-								SetFastTravelEncounters("Ferry", encounterHolds, encounter);
-							}
-							if (encounterType.contains("Other")) {
-								SetFastTravelEncounters("Other", encounterHolds, encounter);
-							}
-						}
-						// Debug forced encounter added, don't iterate the rest of the json
-						if (iDebugEncounter > 0) {
-							break;
 						}
 					}
 				}
 			}
-			logger::info("...Encounter cache initialized.");
+			catch (...) {
+				logger::warn("Couldn't parse JSON File: \"{}\".", path.filename().string().c_str());
+			}
 		}
 		else {
-			logger::error("...File Path: {} for Encounters.json doesn't exist.", path.string());
+			logger::error("Couldn't open JSON File: \"{}\".", path.filename().string().c_str());
 		}
 	};
-	InitEncounterCache(encounters_path);
+	for (const auto& file : std::filesystem::directory_iterator(encounters_dir)) {
+		if (file.path().extension() == ".json") {
+			InitEncounterFileCache(file);
+		}
+	}
+	if (is_initialized) {
+		logger::info("...Encounter cache initialized.");
+	}
+	else {
+		logger::info("...Encounter cache failed to initialize.");
+	}
 }
 
 void Settings::InitializeActivatorCache()
@@ -216,7 +199,7 @@ void Settings::InitializeActivatorCache()
 		logger::error("Settings::InitializeActivatorCache: TESDataHandler not found.");
 		return;
 	}
-	constexpr auto ini_path = L"Data/SKSE/Plugins/ImmersiveFastTravelEncountersSSE/ImmersiveFastTravelEncounters_Base.ini";
+	constexpr auto ini_path = L"Data/SKSE/Plugins/ImmersiveFastTravelEncountersSSE.ini";
 	const auto InitFastTravelActivatorCache = [&](std::filesystem::path path) {
 		CSimpleIniA ini;
 		ini.SetUnicode();
@@ -228,7 +211,7 @@ void Settings::InitializeActivatorCache()
 			// GetSection returns a multimap. The keys are already sorted by default
 			const auto mapSection = ini.GetSection("Map");
 			for (const auto& data : *mapSection) {
-				auto formWithFile = Utils::GetFormIDWithFile(data.first.pItem);
+				const auto formWithFile = utils::GetFormIDWithFile(data.first.pItem);
 				if (formWithFile.first) {
 					auto formID = a_dataHandler->LookupFormID(formWithFile.first, formWithFile.second);
 					if (formID) {
@@ -238,7 +221,7 @@ void Settings::InitializeActivatorCache()
 			}
 			const auto carriageSection = ini.GetSection("Carriage");
 			for (const auto& data : *carriageSection) {
-				auto formWithFile = Utils::GetFormIDWithFile(data.first.pItem);
+				const auto formWithFile = utils::GetFormIDWithFile(data.first.pItem);
 				if (formWithFile.first) {
 					auto formID = a_dataHandler->LookupFormID(formWithFile.first, formWithFile.second);
 					if (formID) {
@@ -248,7 +231,7 @@ void Settings::InitializeActivatorCache()
 			}
 			const auto ferrySection = ini.GetSection("Ferry");
 			for (const auto& data : *ferrySection) {
-				auto formWithFile = Utils::GetFormIDWithFile(data.first.pItem);
+				const auto formWithFile = utils::GetFormIDWithFile(data.first.pItem);
 				if (formWithFile.first) {
 					auto formID = a_dataHandler->LookupFormID(formWithFile.first, formWithFile.second);
 					if (formID) {
@@ -258,7 +241,7 @@ void Settings::InitializeActivatorCache()
 			}
 			const auto otherSection = ini.GetSection("Other");
 			for (const auto& data : *otherSection) {
-				auto formWithFile = Utils::GetFormIDWithFile(data.first.pItem);
+				const auto formWithFile = utils::GetFormIDWithFile(data.first.pItem);
 				if (formWithFile.first) {
 					auto formID = a_dataHandler->LookupFormID(formWithFile.first, formWithFile.second);
 					if (formID) {
@@ -269,7 +252,7 @@ void Settings::InitializeActivatorCache()
 			logger::info("...Fast Travel Activator cache initialized.");
 		}
 		else {
-			logger::error("...File Path: {} for ImmersiveFastTravelEncounters_Base.ini doesn't exist.", path.string());
+			logger::error("...File Path: {} for ImmersiveFastTravelEncountersSSE.ini doesn't exist.", path.string());
 		}
 		ini.Reset(); // Deallocate memory
 	};
@@ -280,7 +263,7 @@ void Settings::InitializeGlobals()
 {
 	const auto a_dataHandler = RE::TESDataHandler::GetSingleton();
 	if (!a_dataHandler) {
-		logger::error("Settings::InitializeSoundFXForms: TESDataHandler not found.");
+		logger::error("Settings::InitializeGlobals: TESDataHandler not found.");
 		return;
 	}
 	sound_FXCategory = a_dataHandler->LookupForm<RE::BGSSoundCategory>(0x172A1, "Skyrim.esm");
@@ -308,7 +291,7 @@ void Settings::Initialize()
 	InitializeGlobals();
 }
 
-const Settings::CachedDataType& Settings::GetEncounterCache() const
+const std::unordered_map<std::uint16_t, Settings::EncounterCacheData>& Settings::GetEncounterCache() const
 {
 	return EncounterCache;
 }
@@ -332,24 +315,18 @@ const bool Settings::IsSurvivalEnabled() const
 	return false;
 }
 
-const bool Settings::IsValidHold(const std::string& a_hold) const
+const bool Settings::IsFastTravelTypeEnabled(const std::string& a_travelType) const
 {
-	const auto found = std::ranges::find_if(holds, [a_hold](const std::string& hold) { return hold == a_hold; });
-	return !found->empty();
-}
-
-const bool Settings::IsFastTravelTypeEnabled(const std::string& a_fastTravelType) const
-{
-	if (a_fastTravelType == "Map" && bMapEncounters) {
+	if (a_travelType == "Map" && bMapEncounters) {
 		return true;
 	}
-	else if (a_fastTravelType == "Carriage" && bCarriageEncounters) {
+	else if (a_travelType == "Carriage" && bCarriageEncounters) {
 		return true;
 	}
-	else if (a_fastTravelType == "Ferry" && bFerryEncounters) {
+	else if (a_travelType == "Ferry" && bFerryEncounters) {
 		return true;
 	}
-	else if (a_fastTravelType == "Other" && bOtherEncounters) {
+	else if (a_travelType == "Other" && bOtherEncounters) {
 		return true;
 	}
 	return false;
