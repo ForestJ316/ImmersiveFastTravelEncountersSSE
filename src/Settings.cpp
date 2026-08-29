@@ -1,7 +1,5 @@
 #include "Settings.h"
 
-#include "Utils.h"
-
 #include <ClibUtil/SimpleIni.hpp>
 
 Settings::CachedDataType Settings::EncounterCache = {};
@@ -137,15 +135,14 @@ void Settings::SetFastTravelEncounters(std::string a_type, std::vector<std::stri
 	}
 	// Check encounter being valid for multiple holds
 	for (const auto& hold : a_encounterHolds) {
-		holds.push_back(hold);
-		EncounterCache[a_type][hold].push_back(cachedData);
+		EncounterCache[a_type][hold].emplace_back(cachedData);
 	}
 	// TODO (maybe if there is a use-case)
 	// Check activator specific
 
 	// Check empty: no holds, no activator
 	if (a_encounterHolds.size() == 0 /* && no activator */) {
-		EncounterCache[a_type][""].push_back(cachedData);
+		EncounterCache[a_type][""].emplace_back(cachedData);
 	}
 }
 
@@ -175,7 +172,7 @@ void Settings::InitializeEncounterCache()
 							// Activator from json add later
 							std::vector<std::string> encounterHolds;
 							if (encounter.value().contains("Hold") && encounter.value()["Hold"].is_string()) {
-								encounterHolds = Utils::GetSplitStrings(encounter.value()["Hold"].get<std::string>(), ",");
+								encounterHolds = utils::SplitString(encounter.value()["Hold"].get<std::string>(), ",");
 							}
 							// Check for fast travel type
 							auto encounterType = encounter.value()["Type"].get<std::string>();
@@ -228,7 +225,7 @@ void Settings::InitializeActivatorCache()
 			// GetSection returns a multimap. The keys are already sorted by default
 			const auto mapSection = ini.GetSection("Map");
 			for (const auto& data : *mapSection) {
-				auto formWithFile = Utils::GetFormIDWithFile(data.first.pItem);
+				auto formWithFile = utils::GetFormIDWithFile(data.first.pItem);
 				if (formWithFile.first) {
 					auto formID = a_dataHandler->LookupFormID(formWithFile.first, formWithFile.second);
 					if (formID) {
@@ -238,7 +235,7 @@ void Settings::InitializeActivatorCache()
 			}
 			const auto carriageSection = ini.GetSection("Carriage");
 			for (const auto& data : *carriageSection) {
-				auto formWithFile = Utils::GetFormIDWithFile(data.first.pItem);
+				auto formWithFile = utils::GetFormIDWithFile(data.first.pItem);
 				if (formWithFile.first) {
 					auto formID = a_dataHandler->LookupFormID(formWithFile.first, formWithFile.second);
 					if (formID) {
@@ -248,7 +245,7 @@ void Settings::InitializeActivatorCache()
 			}
 			const auto ferrySection = ini.GetSection("Ferry");
 			for (const auto& data : *ferrySection) {
-				auto formWithFile = Utils::GetFormIDWithFile(data.first.pItem);
+				auto formWithFile = utils::GetFormIDWithFile(data.first.pItem);
 				if (formWithFile.first) {
 					auto formID = a_dataHandler->LookupFormID(formWithFile.first, formWithFile.second);
 					if (formID) {
@@ -258,7 +255,7 @@ void Settings::InitializeActivatorCache()
 			}
 			const auto otherSection = ini.GetSection("Other");
 			for (const auto& data : *otherSection) {
-				auto formWithFile = Utils::GetFormIDWithFile(data.first.pItem);
+				auto formWithFile = utils::GetFormIDWithFile(data.first.pItem);
 				if (formWithFile.first) {
 					auto formID = a_dataHandler->LookupFormID(formWithFile.first, formWithFile.second);
 					if (formID) {
@@ -330,12 +327,6 @@ const bool Settings::IsSurvivalEnabled() const
 		return survivalModeForm->value;
 	}
 	return false;
-}
-
-const bool Settings::IsValidHold(const std::string& a_hold) const
-{
-	const auto found = std::ranges::find_if(holds, [a_hold](const std::string& hold) { return hold == a_hold; });
-	return !found->empty();
 }
 
 const bool Settings::IsFastTravelTypeEnabled(const std::string& a_fastTravelType) const

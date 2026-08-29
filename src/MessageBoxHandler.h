@@ -6,7 +6,9 @@ class MessageBoxHandler : public RE::IMessageBoxCallback
 {
 private:
 	struct CurrentEncounterData;
-
+	using StoredItemType = std::vector<std::pair<RE::TESForm*, std::int32_t>>;
+	using NestedChoiceType = std::vector<std::pair<int, std::pair<int, int>>>;
+	
 public:
 	static MessageBoxHandler* GetSingleton()
 	{
@@ -28,18 +30,19 @@ private:
 	std::function<void(std::uint8_t)> callback;
 
 	void SetupNextMessageBox(std::uint8_t a_button);
-	// Check for "Randomized" and "DualRandomized" conditions to replace the %random, %dualRandom1, %dualRandom2 strings
-	void SetRandomizedValues(json a_jsonObj, std::string& a_textStr, int& a_iRandom, std::pair<int, int>& a_iDualRandom, bool a_alreadyDone = false);
-	// Case for "AddRandomItem" function where there might be %item1 etc. strings in the message
-	void SetRandomItemStrings(const std::vector<std::pair<RE::TESForm*, std::int32_t>>& a_itemList, std::string& a_message);
+	void SetupNextTitle(const json& a_json, std::string& a_currentTitle);
+	void SetupNextOutcomes(const json& a_json, std::vector<std::string>& a_currentOutcomes, const int& a_iRandom, const std::pair<int, int>& a_iDualRandom, StoredItemType& a_storedItems);
+	void SetupNextMessage(json& a_json, std::string& a_currentMessage, const int& a_iRandom, const std::pair<int, int>& a_iDualRandom, StoredItemType& a_storedItems);
+	void SetupNextChoices(json& a_json, CurrentEncounterData& a_currentEncData, int& a_iRandom, std::pair<int, int>& a_iDualRandom, NestedChoiceType& a_nestedChoices);
 	// Play (or setup) a Sound FX if it's specified on start of the encounter
-	void PlayEncounterSoundFX(std::string a_soundPath, bool a_setup = false);
+	void SetupEncounterSoundFX(std::string a_soundPath);
 
 	RE::BSSoundHandle soundHandle = {};
 	// Store the randomized values to not overwrite the values for nested cases
 	int iRandom = 0;
-	std::pair<int, int> iDualRandom = {0, 0};
-	std::vector<std::pair<RE::TESForm*, std::int32_t>> randomItemList = {};
+	std::pair<int, int> iDualRandom = { 0, 0 };
+	StoredItemType storedItems = {};
+	NestedChoiceType nestedChoices = {};
 
 	struct CurrentEncounterData
 	{
@@ -47,7 +50,6 @@ private:
 		std::string title = "";
 		std::string message = "";
 		json choices;
-		std::string soundFX = "";
 		std::vector<std::string> outcomes = {};
 		bool exit = false;
 	};

@@ -1,32 +1,68 @@
 #include "Utils.h"
 
+#include "Functions.h"
+
 #include <algorithm>
 
-std::vector<std::string> Utils::GetSplitStrings(const std::string& a_str, std::string_view a_delimiter)
+std::vector<std::string> Utils::SplitString(const std::string& a_str, std::string_view a_delimiter)
 {
 	if (string::is_empty(a_str.c_str())) {
 		return {};
 	}
-	auto splitString = string::split(a_str, a_delimiter);
+	auto splitStr = string::split(a_str, a_delimiter);
 	// Remove leading and trailing spaces
-	std::ranges::for_each(splitString, [](std::string& str) { string::trim(str); });
-	return splitString;
+	std::ranges::for_each(splitStr, [](std::string& str) { string::trim(str); });
+	return splitStr;
+}
+
+std::string Utils::GetSeparateNotationRandom(const std::string& a_str)
+{
+	const auto randomMinMax = string::split(a_str, "-");
+	if (!string::is_only_digit(randomMinMax.at(0))) {
+		logger::error("Function was given an invalid min amount argument. It must be a number.");
+		return "";
+	}
+	if (!string::is_only_digit(randomMinMax.at(1))) {
+		logger::error("Function was given an invalid max amount argument. It must be a number.");
+		return "";
+	}
+	auto a_min = !string::is_empty(randomMinMax.at(0).c_str()) ? string::to_num<std::int32_t>(randomMinMax.at(0)) : 1;
+	auto a_max = !string::is_empty(randomMinMax.at(1).c_str()) ? string::to_num<std::int32_t>(randomMinMax.at(1)) : 1;
+	auto randomAmount = clib_util::RNG().generate<std::int32_t>(a_min, a_max);
+	return std::to_string(randomAmount);
+}
+
+std::pair<std::string, std::string> Utils::JoinItemListString(std::string a_itemForm, std::string a_amount)
+{
+	if (string::is_empty(a_itemForm.c_str()) || string::is_empty(a_amount.c_str())) {
+		return {};
+	}
+	if (!a_itemForm.contains("{") || a_itemForm.contains("}") || !a_amount.contains("}") || a_amount.contains("{")) {
+		logger::error("Form {} with amount {} input is invalid.", a_itemForm, a_amount);
+		return {};
+	}
+	string::replace_first_instance(a_itemForm, "{", "");
+	string::replace_first_instance(a_amount, "}", "");
+	if (a_amount.contains("-")) {
+		a_amount = GetSeparateNotationRandom(a_amount);
+	}
+	return std::pair(a_itemForm, a_amount);
 }
 
 std::pair<std::uint32_t, std::string> Utils::GetFormIDWithFile(const std::string& a_formWithFile)
 {
 	if (string::is_empty(a_formWithFile.c_str())) {
 		logger::error("Form for a specified function is empty.");
-		return std::pair<std::uint32_t, std::string>();
+		return {};
 	}
 	if (!a_formWithFile.contains("|")) {
 		logger::error("Form {} is invalid. It must be 0xFormID|Mod.esp.", a_formWithFile);
-		return std::pair<std::uint32_t, std::string>();
+		return {};
 	}
 	auto formStr = a_formWithFile.substr(0, a_formWithFile.find("|"));
 	if (!string::is_only_hex(formStr)) {
 		logger::error("Form {} is invalid. It must be 0xFormID", formStr);
-		return std::pair<std::uint32_t, std::string>();
+		return {};
 	}
 	auto formID = string::to_num<std::uint32_t>(formStr, true);
 	auto fileName = a_formWithFile.substr(a_formWithFile.find("|") + 1);
@@ -38,7 +74,7 @@ bool Utils::GetCellIsInLocation(RE::TESObjectCELL* a_cell, const std::string_vie
 	if (!a_cell || !a_cell->GetLocation()) {
 		return false;
 	}
-	// Exhaust all locations until Tamriel, fail-safe 4 iterations (most cases 2 is enough)
+	// Exhaust all locations until Tamriel, fail-safe 4 iterations (most cases 2 is enough, 3 is possible though)
 	int i = 4;
 	auto currentLoc = a_cell->GetLocation();
 	RE::BSFixedString currentLocName = currentLoc->GetFullName();
@@ -109,4 +145,43 @@ float Utils::GetDistanceInMeters(float a_distance)
 		return a_distance * 1.428f / 100.0f;
 	}
 	return 0.0f;
+}
+
+void Utils::SetRandomizedNumbers(const json& a_json, int& a_iRandom, std::pair<int, int>& a_iDualRandom)
+{
+	if (a_json.contains("DualRandomized") && a_json["DualRandomized"].is_string()) {
+		a_iDualRandom = Functions::DoFunction<std::pair<int, int>>(a_json["DualRandomized"].get<std::string>(), "DualRandomized");
+	}
+	if (a_json.contains("Randomized") && a_json["Randomized"].is_string()) {
+		a_iRandom = Functions::DoFunction<int>(a_json["Randomized"].get<std::string>(), "Randomized");
+	}
+}
+
+void Utils::ReplaceRandomizedStrings(std::string& a_text, const int& a_iRandom, const std::pair<int, int>& a_iDualRandom)
+{
+	// dualRandom first so we don't risk replacing %dualRandom1 and %dualRandom2 strings in case both keys are included
+	// replace_all has a check whether the a_search argument is in the string
+	const auto& [dualRandom1, dualRandom2] = a_iDualRandom;
+	string::replace_all(a_text, "%dualRandom1", std::to_string(dualRandom1));
+	string::replace_all(a_text, "%dualRandom2", std::to_string(dualRandom2));
+	string::replace_all(a_text, "%random", std::to_string(a_iRandom));
+}
+
+void Utils::ReplaceItemStrings(const std::vector<std::pair<RE::TESForm*, std::int32_t>>& a_itemList, std::string& a_message)
+{
+	for (auto i = 0; i < a_itemList.size(); ++i) {
+		auto itemStr = std::format("%item{:d}", i + 1);
+		if (a_message.contains(itemStr)) {
+			const auto& [a_item, a_amount] = a_itemList.at(i);
+			auto itemName = a_item ? a_item->GetName() : "";
+			if (!string::is_empty(itemName)) {
+				// Amount, Name
+				string::replace_all(a_message, itemStr, std::format("{} {}", a_amount, itemName));
+			}
+			// If there is something wrong with the function or input then just remove the %item{:d} string
+			else {
+				string::replace_all(a_message, itemStr, "");
+			}
+		}
+	}
 }

@@ -1,13 +1,12 @@
 #include "Functions.h"
 
 #include "Settings.h"
-#include "Utils.h"
 #include "MessageBoxHandler.h"
 
 #include <algorithm>
 #include <ranges>
 
-std::vector<std::pair<RE::TESForm*, std::int32_t>> Functions::selectedRandomItems = {};
+Functions::StoredItemFuncType Functions::storedItemsFunc = {};
 std::vector<RE::ActiveEffect*> Functions::currentActiveEffects = {};
 
 void Functions::Initialize()
@@ -36,37 +35,8 @@ void Functions::Initialize()
 
 void Functions::ResetVars()
 {
-	selectedRandomItems.clear();
+	storedItemsFunc.clear();
 	currentActiveEffects.clear();
-}
-
-constexpr Functions::Function_Name Functions::GetFunctionHash(const std::string& a_str)
-{
-	if (a_str == "HasItem") return Function_Name::HasItem;
-	if (a_str == "AddItem") return Function_Name::AddItem;
-	if (a_str == "RemoveItem") return Function_Name::RemoveItem;
-	if (a_str == "AddRandomItem") return Function_Name::AddRandomItem;
-	if (a_str == "GetSkill") return Function_Name::GetSkill;
-	if (a_str == "RewardSkillPercent") return Function_Name::RewardSkillPercent;
-	if (a_str == "RewardPlayerXP") return Function_Name::RewardPlayerXP;
-	if (a_str == "IsGreater") return Function_Name::IsGreater;
-	if (a_str == "IsGreaterOrEqual") return Function_Name::IsGreaterOrEqual;
-	if (a_str == "IsEqual") return Function_Name::IsEqual;
-	if (a_str == "IsLessOrEqual") return Function_Name::IsLessOrEqual;
-	if (a_str == "IsLess") return Function_Name::IsLess;
-	if (a_str == "RollRandom") return Function_Name::RollRandom;
-	if (a_str == "RollDualRandom") return Function_Name::RollDualRandom;
-	if (a_str == "HasSpell") return Function_Name::HasSpell;
-	if (a_str == "HasActiveSpell") return Function_Name::HasActiveSpell;
-	if (a_str == "CastSpellChance") return Function_Name::CastSpellChance;
-	if (a_str == "RemoveActiveSpell") return Function_Name::RemoveActiveSpell;
-	if (a_str == "DamageAV") return Function_Name::DamageAV;
-	if (a_str == "RestoreAV") return Function_Name::RestoreAV;
-	if (a_str == "ModHungerPercent") return Function_Name::ModHungerPercent;
-	if (a_str == "ModFatiguePercent") return Function_Name::ModFatiguePercent;
-	if (a_str == "ModColdPercent") return Function_Name::ModColdPercent;
-
-	return Function_Name::UNKNOWN;
 }
 
 void Functions::AddItemAndNotify(RE::TESBoundObject* a_item, std::int32_t a_amount)
@@ -75,10 +45,22 @@ void Functions::AddItemAndNotify(RE::TESBoundObject* a_item, std::int32_t a_amou
 	RE::SendHUDMessage::ShowInventoryChangeMessage(a_item, a_amount, true, true, a_item->GetName());
 }
 
+void Functions::RemoveItemAndNotify(RE::TESBoundObject* a_item, std::int32_t a_amount)
+{
+	// If the amount is bigger than the actual count, use only the actual count
+	auto ITEM_FILTER = [&a_item](RE::TESBoundObject& a_obj) { return a_item->formID == a_obj.formID; };
+	auto itemCountMap = RE::PlayerCharacter::GetSingleton()->GetInventoryCounts(ITEM_FILTER);
+	if (auto itemCount = itemCountMap.find(a_item); itemCount != itemCountMap.end()) {
+		a_amount = a_amount > itemCount->second ? itemCount->second : a_amount;
+	}
+	RE::PlayerCharacter::GetSingleton()->AddObjectToContainer(a_item, nullptr, -a_amount, nullptr);
+	RE::SendHUDMessage::ShowInventoryChangeMessage(a_item, -a_amount, false, true, a_item->GetName());
+}
+
 RE::ActorValue Functions::GetPlayerSkillAV(const std::string& a_skillName)
 {
 	for (const auto& skillAV : Functions::PLAYER_SKILL_AV) {
-		if (a_skillName == skillAV.first) {
+		if (string::iequals(a_skillName, skillAV.first)) {
 			return skillAV.second;
 		}
 	}
@@ -88,106 +70,64 @@ RE::ActorValue Functions::GetPlayerSkillAV(const std::string& a_skillName)
 RE::ActorValue Functions::GetPlayerStatAV(const std::string& a_statName)
 {
 	for (const auto& skillAV : Functions::PLAYER_STAT_AV) {
-		if (a_statName == skillAV.first) {
+		if (string::iequals(a_statName, skillAV.first)) {
 			return skillAV.second;
 		}
 	}
 	return RE::ActorValue::kNone;
 }
 
-std::tuple<bool, int, int, Functions::FormAndAmountType> Functions::DoFunction(const std::string& a_outcome, const std::string a_type)
+// ----------------------------------- Randomized & DualRandomized -----------------------------------
+int Functions::RollRandom(const std::vector<std::string>& a_args, const std::string& a_type)
 {
-	const auto args = Utils::GetSplitStrings(a_outcome, ",");
-	switch (Functions::GetFunctionHash(args.at(0))) {
-		case Function_Name::HasItem: {
-			return { Functions::HasItem(args, a_type), 0, 0, {} };
-		}
-		case Function_Name::AddItem: {
-			Functions::AddItem(args, a_type);
-			break;
-		}
-		case Function_Name::RemoveItem: {
-			Functions::RemoveItem(args, a_type);
-			break;
-		}
-		case Function_Name::AddRandomItem: {
-			return { true, 0, 0, Functions::AddRandomItem(args, a_type) };
-		}
-		case Function_Name::GetSkill: {
-			return { Functions::GetSkill(args, a_type), 0, 0, {} };
-		}
-		case Function_Name::RewardSkillPercent: {
-			Functions::RewardSkillPercent(args, a_type);
-			break;
-		}
-		case Function_Name::RewardPlayerXP: {
-			Functions::RewardPlayerXP(args, a_type);
-			break;
-		}
-		case Function_Name::IsGreater: {
-			return { Functions::IsGreater(args, a_type), 0, 0, {} };
-		}
-		case Function_Name::IsGreaterOrEqual: {
-			return { Functions::IsGreaterOrEqual(args, a_type), 0, 0, {} };
-		}
-		case Function_Name::IsEqual: {
-			return { Functions::IsEqual(args, a_type), 0, 0, {} };
-		}
-		case Function_Name::IsLessOrEqual: {
-			return { Functions::IsLessOrEqual(args, a_type), 0, 0, {} };
-		}
-		case Function_Name::IsLess: {
-			return { Functions::IsLess(args, a_type), 0, 0, {} };
-		}
-		case Function_Name::RollRandom: {
-			return { true, Functions::RollRandom(args, a_type), 0, {} };
-		}
-		case Function_Name::RollDualRandom: {
-			auto dualRandom = Functions::RollDualRandom(args, a_type);
-			return { true, dualRandom.first, dualRandom.second, {} };
-		}
-		case Function_Name::HasSpell: {
-			return { Functions::HasSpell(args, a_type), 0, 0, {} };
-		}
-		case Function_Name::HasActiveSpell: {
-			return { Functions::HasActiveSpell(args, a_type), 0, 0, {} };
-		}
-		case Function_Name::CastSpellChance: {
-			Functions::CastSpellChance(args, a_type);
-			break;
-		}
-		case Function_Name::RemoveActiveSpell: {
-			Functions::RemoveActiveSpell(args, a_type);
-			break;
-		}
-		case Function_Name::DamageAV: {
-			Functions::DamageAV(args, a_type);
-			break;
-		}
-		case Function_Name::RestoreAV: {
-			Functions::RestoreAV(args, a_type);
-			break;
-		}
-		case Function_Name::ModHungerPercent: {
-			Functions::ModHungerPercent(args, a_type);
-			break;
-		}
-		case Function_Name::ModFatiguePercent: {
-			Functions::ModFatiguePercent(args, a_type);
-			break;
-		}
-		case Function_Name::ModColdPercent: {
-			Functions::ModColdPercent(args, a_type);
-			break;
-		}
-		default: {
-			logger::error("Function {} is not valid. Check the function name, it is most likely wrong.", a_outcome);
-			break;
-		}		
+	if (a_type != "Randomized") {
+		logger::error("RollRandom error: function is an \"Randomized\" function only.");
+		return 0;
 	}
-	return { true, 0, 0, {} };
+	if (a_args.size() != 3) {
+		logger::error("RollRandom error: function was given the wrong amount of arguments.");
+		return 0;
+	}
+	if (!string::is_only_digit(a_args.at(1)) && !string::is_only_digit(a_args.at(2))) {
+		logger::error("RollRandom error: function was given an invalid number argument.");
+		return 0;
+	}
+	int a_min = string::to_num<int>(a_args.at(1));
+	int a_max = string::to_num<int>(a_args.at(2));
+	if (a_min > a_max) {
+		logger::error("RollRandom error: minimum number must be less or equal to maximum.");
+		return 0;
+	}
+	int a_random = clib_util::RNG().generate<int>(a_min, a_max);
+	return a_random;
 }
 
+std::pair<int, int> Functions::RollDualRandom(const std::vector<std::string>& a_args, const std::string& a_type)
+{
+	if (a_type != "DualRandomized") {
+		logger::error("RollDualRandom error: function is an \"DualRandomized\" function only.");
+		return { 0, 0 };
+	}
+	if (a_args.size() != 3) {
+		logger::error("RollDualRandom error: function was given the wrong amount of arguments.");
+		return { 0, 0 };
+	}
+	if (!string::is_only_digit(a_args.at(1)) && !string::is_only_digit(a_args.at(2))) {
+		logger::error("RollDualRandom error: function was given an invalid number argument.");
+		return { 0, 0 };
+	}
+	int a_min = string::to_num<int>(a_args.at(1));
+	int a_max = string::to_num<int>(a_args.at(2));
+	if (a_min > a_max) {
+		logger::error("RollDualRandom error: minimum number must be less or equal to maximum.");
+		return { 0, 0 };
+	}
+	int a_dualRandom1 = clib_util::RNG().generate<int>(a_min, a_max);
+	int a_dualRandom2 = clib_util::RNG().generate<int>(a_min, a_max);
+	return { a_dualRandom1, a_dualRandom2 };
+}
+
+// ----------------------------------- Check -----------------------------------
 bool Functions::HasItem(const std::vector<std::string>& a_args, const std::string& a_type)
 {
 	if (a_type != "Check") {
@@ -198,7 +138,7 @@ bool Functions::HasItem(const std::vector<std::string>& a_args, const std::strin
 		logger::error("HasItem error: function was given the wrong amount of arguments.");
 		return false;
 	}
-	auto formPair = Utils::GetFormIDWithFile(a_args.at(1));
+	auto formPair = utils::GetFormIDWithFile(a_args.at(1));
 	if (formPair == std::pair<std::uint32_t, std::string>()) {
 		logger::error("HasItem error: function was given an invalid Form argument.");
 		return false;
@@ -224,98 +164,467 @@ bool Functions::HasItem(const std::vector<std::string>& a_args, const std::strin
 		auto itemObj = item->As<RE::TESBoundObject>();
 		auto ITEM_FILTER = [itemObj](RE::TESBoundObject& a_obj) { return itemObj->formID == a_obj.formID; };
 		auto itemCountMap = RE::PlayerCharacter::GetSingleton()->GetInventoryCounts(ITEM_FILTER);
-		auto itemCount = itemCountMap.find(itemObj);
-		if (itemCount != itemCountMap.end()) {
+		if (auto itemCount = itemCountMap.find(itemObj); itemCount != itemCountMap.end()) {
 			return itemCount->second >= amount;
 		}
 	}
 	return false;
 }
 
-void Functions::AddItem(const std::vector<std::string>& a_args, const std::string& a_type)
+bool Functions::HasSkill(const std::vector<std::string>& a_args, const std::string& a_type)
+{
+	if (a_type != "Check") {
+		logger::error("HasSkill error: function is a \"Check\" function only.");
+		return false;
+	}
+	if (a_args.size() != 3) {
+		logger::error("HasSkill error: function was given the wrong amount of arguments.");
+		return false;
+	}
+	if (!string::is_only_digit(a_args.at(2))) {
+		logger::error("HasSkill error: function was given an invalid number argument.");
+		return false;
+	}
+	auto skillCheckLevel = string::to_num<std::uint8_t>(a_args.at(2));
+	auto skillAV = GetPlayerSkillAV(a_args.at(1));
+	if (skillAV == RE::ActorValue::kNone) {
+		logger::error("HasSkill error: function was given the wrong skill name.");
+		return false;
+	}
+	// GetActorValue() gets the skill level with modifiers
+	auto currentSkillLevel = RE::PlayerCharacter::GetSingleton()->AsActorValueOwner()->GetActorValue(skillAV);
+	return skillCheckLevel <= currentSkillLevel;
+}
+
+bool Functions::HasSpell(const std::vector<std::string>& a_args, const std::string& a_type)
+{
+	if (a_type != "Check") {
+		logger::error("HasSpell error: function is a \"Check\" function only.");
+		return false;
+	}
+	if (a_args.size() != 2) {
+		logger::error("HasSpell error: function was given the wrong amount of arguments.");
+		return false;
+	}
+	auto formPair = utils::GetFormIDWithFile(a_args.at(1));
+	if (formPair == std::pair<std::uint32_t, std::string>()) {
+		logger::error("HasSpell error: function was given an invalid Form argument.");
+		return false;
+	}
+	const auto a_dataHandler = RE::TESDataHandler::GetSingleton();
+	if (!a_dataHandler) {
+		logger::error("HasSpell error: TESDataHandler not found.");
+		return false;
+	}
+	auto a_spell = a_dataHandler->LookupForm<RE::SpellItem>(formPair.first, formPair.second);
+	if (!a_spell) {
+		logger::error("HasSpell error: spell with FormID {} for Mod {} does not exist.", formPair.first, formPair.second);
+		return false;
+	}
+	return RE::PlayerCharacter::GetSingleton()->HasSpell(a_spell);
+}
+
+bool Functions::HasActiveSpell(const std::vector<std::string>& a_args, const std::string& a_type)
+{
+	if (a_type != "Check") {
+		logger::error("HasActiveSpell error: function is a \"Check\" function only.");
+		return false;
+	}
+	if (a_args.size() != 2) {
+		logger::error("HasActiveSpell error: function was given the wrong amount of arguments.");
+		return false;
+	}
+	auto formPair = utils::GetFormIDWithFile(a_args.at(1));
+	if (formPair == std::pair<std::uint32_t, std::string>()) {
+		logger::error("HasActiveSpell error: function was given an invalid Form argument.");
+		return false;
+	}
+	const auto a_dataHandler = RE::TESDataHandler::GetSingleton();
+	if (!a_dataHandler) {
+		logger::error("HasActiveSpell error: TESDataHandler not found.");
+		return false;
+	}
+	auto a_spell = a_dataHandler->LookupForm<RE::SpellItem>(formPair.first, formPair.second);
+	if (!a_spell) {
+		logger::error("HasActiveSpell error: spell with FormID {} for Mod {} does not exist.", formPair.first, formPair.second);
+		return false;
+	}
+	using EffectFlag = RE::ActiveEffect::Flag;
+	// Store the valid effects in case the encounter has more HasActiveSpell checks
+	if (currentActiveEffects.size() == 0) {
+		// SE/AE has GetActiveEffectList()
+		if (!REL::Module::IsVR()) {
+			if (const auto activeEffectList = RE::PlayerCharacter::GetSingleton()->AsMagicTarget()->GetActiveEffectList(); activeEffectList) {
+				for (const auto& a_effect : *activeEffectList) {
+					if (a_effect->flags.none(EffectFlag::kInactive) && a_effect->flags.none(EffectFlag::kDispelled)) {
+						currentActiveEffects.emplace_back(a_effect);
+					}
+				}
+			}
+		}
+		// Have to use a different approach for VR
+		else {
+			RE::PlayerCharacter::GetSingleton()->AsMagicTarget()->VisitActiveEffects([&](RE::ActiveEffect* a_effect) -> RE::BSContainer::ForEachResult {
+				if (a_effect) {
+					currentActiveEffects.emplace_back(a_effect);
+				}
+				return RE::BSContainer::ForEachResult::kContinue;
+			});
+			// Filter out the inactive and dispelled effects
+			std::erase_if(currentActiveEffects, [](const auto& a_effect) {
+				if (a_effect->flags.any(EffectFlag::kInactive) || a_effect->flags.any(EffectFlag::kDispelled)) {
+					return true;
+				}
+				return false;
+			});
+		}
+	}
+	return std::ranges::any_of(currentActiveEffects, [&a_spell](const auto& a_effect) {
+		return a_effect && a_effect->spell == a_spell;
+	});
+
+	return false;
+}
+
+bool Functions::IsRace(const std::vector<std::string>& a_args, const std::string& a_type)
+{
+	if (a_type != "Check") {
+		logger::error("IsRace error: function is a \"Check\" function only.");
+		return false;
+	}
+	if (a_args.size() < 2) {
+		logger::error("IsRace error: function was given the wrong amount of arguments.");
+		return false;
+	}
+	const auto playerRace = RE::PlayerCharacter::GetSingleton()->GetRace();
+	if (!playerRace) {
+		logger::error("IsRace error: could not find the player's race.");
+		return false;
+	}
+	return std::ranges::any_of(a_args.begin() + 1, a_args.end(), [&playerRace](const auto& a_race) {
+		return a_race.contains(playerRace->GetFullName());
+	});
+	return false;
+}
+
+bool Functions::IsGreater(const std::vector<std::string>& a_args, const std::string& a_type)
+{
+	if (a_type != "Check") {
+		logger::error("IsGreater error: function is a \"Check\" function only.");
+		return false;
+	}
+	if (a_args.size() != 3) {
+		logger::error("IsGreater error: function was given the wrong amount of arguments.");
+		return false;
+	}
+	// INT_MIN should never appear, so okay for a temporary number
+	int a_value1 = INT_MIN;
+	int a_value2 = INT_MIN;
+	if (string::is_only_digit(a_args.at(1))) {
+		a_value1 = string::to_num<int>(a_args.at(1));
+	}
+	else {
+		auto skillAV1 = GetPlayerSkillAV(a_args.at(1));
+		if (skillAV1 != RE::ActorValue::kNone) {
+			// GetActorValue() gets the skill level with modifiers
+			a_value1 = static_cast<int>(RE::PlayerCharacter::GetSingleton()->AsActorValueOwner()->GetActorValue(skillAV1));
+		}
+	}
+	if (string::is_only_digit(a_args.at(2))) {
+		a_value2 = string::to_num<int>(a_args.at(2));
+	}
+	else {
+		auto skillAV2 = GetPlayerSkillAV(a_args.at(2));
+		if (skillAV2 != RE::ActorValue::kNone) {
+			// GetActorValue() gets the skill level with modifiers
+			a_value2 = static_cast<int>(RE::PlayerCharacter::GetSingleton()->AsActorValueOwner()->GetActorValue(skillAV2));
+		}
+	}
+	if (a_value1 != INT_MIN && a_value2 != INT_MIN) {
+		return a_value1 > a_value2;
+	}
+	logger::error("IsGreater error: function was given an invalid number/skill name argument.");
+	return false;
+}
+
+bool Functions::IsGreaterOrEqual(const std::vector<std::string>& a_args, const std::string& a_type)
+{
+	if (a_type != "Check") {
+		logger::error("IsGreaterOrEqual error: function is a \"Check\" function only.");
+		return false;
+	}
+	if (a_args.size() != 3) {
+		logger::error("IsGreaterOrEqual error: function was given the wrong amount of arguments.");
+		return false;
+	}
+	// INT_MIN should never appear, so okay for a temporary number
+	int a_value1 = INT_MIN;
+	int a_value2 = INT_MIN;
+	if (string::is_only_digit(a_args.at(1))) {
+		a_value1 = string::to_num<int>(a_args.at(1));
+	}
+	else {
+		auto skillAV1 = GetPlayerSkillAV(a_args.at(1));
+		if (skillAV1 != RE::ActorValue::kNone) {
+			// GetActorValue() gets the skill level with modifiers
+			a_value1 = static_cast<int>(RE::PlayerCharacter::GetSingleton()->AsActorValueOwner()->GetActorValue(skillAV1));
+		}
+	}
+	if (string::is_only_digit(a_args.at(2))) {
+		a_value2 = string::to_num<int>(a_args.at(2));
+	}
+	else {
+		auto skillAV2 = GetPlayerSkillAV(a_args.at(2));
+		if (skillAV2 != RE::ActorValue::kNone) {
+			// GetActorValue() gets the skill level with modifiers
+			a_value2 = static_cast<int>(RE::PlayerCharacter::GetSingleton()->AsActorValueOwner()->GetActorValue(skillAV2));
+		}
+	}
+	if (a_value1 != INT_MIN && a_value2 != INT_MIN) {
+		return a_value1 >= a_value2;
+	}
+	logger::error("IsGreaterOrEqual error: function was given an invalid number/skill name argument.");
+	return false;
+}
+
+bool Functions::IsEqual(const std::vector<std::string>& a_args, const std::string& a_type)
+{
+	if (a_type != "Check") {
+		logger::error("IsEqual error: function is a \"Check\" function only.");
+		return false;
+	}
+	if (a_args.size() != 3) {
+		logger::error("IsEqual error: function was given the wrong amount of arguments.");
+		return false;
+	}
+	// INT_MIN should never appear, so okay for a temporary number
+	int a_value1 = INT_MIN;
+	int a_value2 = INT_MIN;
+	if (string::is_only_digit(a_args.at(1))) {
+		a_value1 = string::to_num<int>(a_args.at(1));
+	}
+	else {
+		auto skillAV1 = GetPlayerSkillAV(a_args.at(1));
+		if (skillAV1 != RE::ActorValue::kNone) {
+			// GetActorValue() gets the skill level with modifiers
+			a_value1 = static_cast<int>(RE::PlayerCharacter::GetSingleton()->AsActorValueOwner()->GetActorValue(skillAV1));
+		}
+	}
+	if (string::is_only_digit(a_args.at(2))) {
+		a_value2 = string::to_num<int>(a_args.at(2));
+	}
+	else {
+		auto skillAV2 = GetPlayerSkillAV(a_args.at(2));
+		if (skillAV2 != RE::ActorValue::kNone) {
+			// GetActorValue() gets the skill level with modifiers
+			a_value2 = static_cast<int>(RE::PlayerCharacter::GetSingleton()->AsActorValueOwner()->GetActorValue(skillAV2));
+		}
+	}
+	if (a_value1 != INT_MIN && a_value2 != INT_MIN) {
+		return a_value1 == a_value2;
+	}
+	logger::error("IsEqual error: function was given an invalid number/skill name argument.");
+	return false;
+}
+
+bool Functions::IsLessOrEqual(const std::vector<std::string>& a_args, const std::string& a_type)
+{
+	if (a_type != "Check") {
+		logger::error("IsLessOrEqual error: function is a \"Check\" function only.");
+		return false;
+	}
+	if (a_args.size() != 3) {
+		logger::error("IsLessOrEqual error: function was given the wrong amount of arguments.");
+		return false;
+	}
+	// INT_MIN should never appear, so okay for a temporary number
+	int a_value1 = INT_MIN;
+	int a_value2 = INT_MIN;
+	if (string::is_only_digit(a_args.at(1))) {
+		a_value1 = string::to_num<int>(a_args.at(1));
+	}
+	else {
+		auto skillAV1 = GetPlayerSkillAV(a_args.at(1));
+		if (skillAV1 != RE::ActorValue::kNone) {
+			// GetActorValue() gets the skill level with modifiers
+			a_value1 = static_cast<int>(RE::PlayerCharacter::GetSingleton()->AsActorValueOwner()->GetActorValue(skillAV1));
+		}
+	}
+	if (string::is_only_digit(a_args.at(2))) {
+		a_value2 = string::to_num<int>(a_args.at(2));
+	}
+	else {
+		auto skillAV2 = GetPlayerSkillAV(a_args.at(2));
+		if (skillAV2 != RE::ActorValue::kNone) {
+			// GetActorValue() gets the skill level with modifiers
+			a_value2 = static_cast<int>(RE::PlayerCharacter::GetSingleton()->AsActorValueOwner()->GetActorValue(skillAV2));
+		}
+	}
+	if (a_value1 != INT_MIN && a_value2 != INT_MIN) {
+		return a_value1 <= a_value2;
+	}
+	logger::error("IsLessOrEqual error: function was given an invalid number/skill name argument.");
+	return false;
+}
+
+bool Functions::IsLess(const std::vector<std::string>& a_args, const std::string& a_type)
+{
+	if (a_type != "Check") {
+		logger::error("IsLess error: function is a \"Check\" function only.");
+		return false;
+	}
+	if (a_args.size() != 3) {
+		logger::error("IsLess error: function was given the wrong amount of arguments.");
+		return false;
+	}
+	// INT_MIN should never appear, so okay for a temporary number
+	int a_value1 = INT_MIN;
+	int a_value2 = INT_MIN;
+	if (string::is_only_digit(a_args.at(1))) {
+		a_value1 = string::to_num<int>(a_args.at(1));
+	}
+	else {
+		auto skillAV1 = GetPlayerSkillAV(a_args.at(1));
+		if (skillAV1 != RE::ActorValue::kNone) {
+			// GetActorValue() gets the skill level with modifiers
+			a_value1 = static_cast<int>(RE::PlayerCharacter::GetSingleton()->AsActorValueOwner()->GetActorValue(skillAV1));
+		}
+	}
+	if (string::is_only_digit(a_args.at(2))) {
+		a_value2 = string::to_num<int>(a_args.at(2));
+	}
+	else {
+		auto skillAV2 = GetPlayerSkillAV(a_args.at(2));
+		if (skillAV2 != RE::ActorValue::kNone) {
+			// GetActorValue() gets the skill level with modifiers
+			a_value2 = static_cast<int>(RE::PlayerCharacter::GetSingleton()->AsActorValueOwner()->GetActorValue(skillAV2));
+		}
+	}
+	if (a_value1 != INT_MIN && a_value2 != INT_MIN) {
+		return a_value1 < a_value2;
+	}
+	logger::error("IsLess error: function was given an invalid number/skill name argument.");
+	return false;
+}
+
+// ----------------------------------- Outcomes -----------------------------------
+Functions::StoredItemType Functions::AddItem(const std::vector<std::string>& a_args, const std::string& a_type)
 {
 	if (a_type != "Outcome") {
 		logger::error("AddItem error: function is an \"Outcome\" function only.");
-		return;
+		return {};
 	}
 	if (a_args.size() != 3) {
 		logger::error("AddItem error: function was given the wrong amount of arguments.");
-		return;
+		return {};
 	}
-	auto formPair = Utils::GetFormIDWithFile(a_args.at(1));
+	auto formPair = utils::GetFormIDWithFile(a_args.at(1));
 	if (formPair == std::pair<std::uint32_t, std::string>()) {
 		logger::error("AddItem error: function was given an invalid Form argument.");
-		return;
+		return {};
 	}
-	if (!string::is_only_digit(a_args.at(2))) {
-		logger::error("AddItem error: function was given an invalid amount argument. It must be a number.");
-		return;
-	}
-	auto amount = string::to_num<std::int32_t>(a_args.at(2));
+	const auto& currentEncounterData = MessageBoxHandler::GetSingleton()->GetCurrentEncounterData();
+	// Keep adding to the item list until it's time to exit the encounter
+	// In case there are nested outcomes with AddItem...
+	if (!currentEncounterData.exit) {
+		std::string amountStr = a_args.at(2);
+		// Allow separate notation
+		if (amountStr.contains("-")) {
+			amountStr = utils::GetSeparateNotationRandom(amountStr);
+		}
+		if (!string::is_only_digit(amountStr)) {
+			logger::error("AddItem error: function was given an invalid amount argument. It must be either a number or in the notation of \"min-max\".");
+			return {};
+		}
+		auto amount = string::to_num<std::int32_t>(amountStr);
 
-	const auto a_dataHandler = RE::TESDataHandler::GetSingleton();
-	if (!a_dataHandler) {
-		logger::error("AddItem error: TESDataHandler not found.");
-		return;
+		const auto a_dataHandler = RE::TESDataHandler::GetSingleton();
+		if (!a_dataHandler) {
+			logger::error("AddItem error: TESDataHandler not found.");
+			return {};
+		}
+		auto item = a_dataHandler->LookupForm(formPair.first, formPair.second);
+		if (!item) {
+			logger::error("AddItem error: item with FormID {} for Mod {} does not exist.", formPair.first, formPair.second);
+			return {};
+		}
+		storedItemsFunc.emplace_back(a_args.at(0), item, amount);
+		return { { item, amount } };
 	}
-	auto item = a_dataHandler->LookupForm(formPair.first, formPair.second);
-	if (!item) {
-		logger::error("AddItem error: item with FormID {} for Mod {} does not exist.", formPair.first, formPair.second);
-		return;
+	else {
+		storedItemsFunc.erase(
+			std::ranges::find_if(storedItemsFunc, [&a_args](std::tuple<std::string, RE::TESForm*, std::int32_t>& a_itemAndAmount) {
+				auto& [a_func, a_item, a_amount] = a_itemAndAmount;
+				if (a_func == a_args.at(0) && a_item && a_item->IsBoundObject() && a_item->formType.get() != RE::FormType::None) {
+					AddItemAndNotify(a_item->As<RE::TESBoundObject>(), a_amount);
+					return true;
+				}
+				return false;
+			})
+		);
 	}
-
-	if (item->IsBoundObject() && item->formType.get() != RE::FormType::None) {
-		AddItemAndNotify(item->As<RE::TESBoundObject>(), amount);
-	}
+	return {};
 }
 
-void Functions::RemoveItem(const std::vector<std::string>& a_args, const std::string& a_type)
+Functions::StoredItemType Functions::RemoveItem(const std::vector<std::string>& a_args, const std::string& a_type)
 {
 	if (a_type != "Outcome") {
 		logger::error("RemoveItem error: function is an \"Outcome\" function only.");
-		return;
+		return {};
 	}
 	if (a_args.size() != 3) {
 		logger::error("RemoveItem error: function was given the wrong amount of arguments.");
-		return;
+		return {};
 	}
-	auto formPair = Utils::GetFormIDWithFile(a_args.at(1));
+	auto formPair = utils::GetFormIDWithFile(a_args.at(1));
 	if (formPair == std::pair<std::uint32_t, std::string>()) {
 		logger::error("RemoveItem error: function was given an invalid Form argument.");
-		return;
+		return {};
 	}
-	if (!string::is_only_digit(a_args.at(2))) {
-		logger::error("RemoveItem error: function was given an invalid amount argument. It must be a number.");
-		return;
-	}
-	auto amount = string::to_num<std::int32_t>(a_args.at(2));
-
-	const auto a_dataHandler = RE::TESDataHandler::GetSingleton();
-	if (!a_dataHandler) {
-		logger::error("RemoveItem error: TESDataHandler not found.");
-		return;
-	}
-	auto item = a_dataHandler->LookupForm(formPair.first, formPair.second);
-	if (!item) {
-		logger::error("RemoveItem error: item with FormID {} for Mod {} does not exist.", formPair.first, formPair.second);
-		return;
-	}
-
-	if (item->IsBoundObject() && item->formType.get() != RE::FormType::None) {
-		auto itemObj = item->As<RE::TESBoundObject>();
-		// If the amount is bigger than the actual count, use only the actual count
-		auto ITEM_FILTER = [itemObj](RE::TESBoundObject& a_obj) { return itemObj->formID == a_obj.formID; };
-		auto itemCountMap = RE::PlayerCharacter::GetSingleton()->GetInventoryCounts(ITEM_FILTER);
-		auto itemCount = itemCountMap.find(itemObj);
-		if (itemCount != itemCountMap.end()) {
-			amount = amount > itemCount->second ? itemCount->second : amount;
+	const auto& currentEncounterData = MessageBoxHandler::GetSingleton()->GetCurrentEncounterData();
+	// Keep adding to the item list until it's time to exit the encounter
+	// In case there are nested outcomes with RemoveItem...
+	if (!currentEncounterData.exit) {
+		std::string amountStr = a_args.at(2);
+		// Allow separate notation
+		if (amountStr.contains("-")) {
+			amountStr = utils::GetSeparateNotationRandom(amountStr);
 		}
-		RE::PlayerCharacter::GetSingleton()->AddObjectToContainer(itemObj, nullptr, -amount, nullptr);
-		RE::SendHUDMessage::ShowInventoryChangeMessage(itemObj, -amount, false, true, itemObj->GetName());
+		if (!string::is_only_digit(amountStr)) {
+			logger::error("RemoveItem error: function was given an invalid amount argument. It must be either a number or in the notation of \"min-max\".");
+			return {};
+		}
+		auto amount = string::to_num<std::int32_t>(amountStr);
+
+		const auto a_dataHandler = RE::TESDataHandler::GetSingleton();
+		if (!a_dataHandler) {
+			logger::error("RemoveItem error: TESDataHandler not found.");
+			return {};
+		}
+		auto item = a_dataHandler->LookupForm(formPair.first, formPair.second);
+		if (!item) {
+			logger::error("RemoveItem error: item with FormID {} for Mod {} does not exist.", formPair.first, formPair.second);
+			return {};
+		}
+		storedItemsFunc.emplace_back(a_args.at(0), item, amount);
+		return { { item, amount } };
 	}
+	else {
+		storedItemsFunc.erase(
+			std::ranges::find_if(storedItemsFunc, [&a_args](std::tuple<std::string, RE::TESForm*, std::int32_t>& a_itemAndAmount) {
+				auto& [a_func, a_item, a_amount] = a_itemAndAmount;
+				if (a_func == a_args.at(0) && a_item && a_item->IsBoundObject() && a_item->formType.get() != RE::FormType::None) {
+					RemoveItemAndNotify(a_item->As<RE::TESBoundObject>(), a_amount);
+					return true;
+				}
+				return false;
+			})
+		);
+	}
+	return {};
 }
 
-Functions::FormAndAmountType Functions::AddRandomItem(const std::vector<std::string>& a_args, const std::string& a_type)
+Functions::StoredItemType Functions::AddRandomItem(const std::vector<std::string>& a_args, const std::string& a_type)
 {
 	if (a_type != "Outcome") {
 		logger::error("AddRandomItem error: function is an \"Outcome\" function only.");
@@ -331,7 +640,7 @@ Functions::FormAndAmountType Functions::AddRandomItem(const std::vector<std::str
 	}
 	auto itemCount = string::to_num<std::uint16_t>(a_args.at(1));
 
-	auto& currentEncounterData = MessageBoxHandler::GetSingleton()->GetCurrentEncounterData();
+	const auto& currentEncounterData = MessageBoxHandler::GetSingleton()->GetCurrentEncounterData();
 	// Keep adding to the item list until it's time to exit the encounter
 	// In case there are nested outcomes with AddRandomItem...
 	if (!currentEncounterData.exit) {
@@ -344,95 +653,69 @@ Functions::FormAndAmountType Functions::AddRandomItem(const std::vector<std::str
 		std::vector<std::pair<std::string, std::string>> itemList;
 		// Skip the function name and count
 		for (auto it = a_args.begin() + 2; it != a_args.end(); it++) {
-			std::string formPair = *it;
 			// Join back the item and the amount
-			if (formPair.contains("{")) {
-				it += 1;
-				if (it != a_args.end() && it->contains("}")) {
-					std::string amount = *it;
-					string::replace_first_instance(formPair, "{", "");
-					string::replace_first_instance(amount, "}", "");
-					if (formPair.contains("}") || amount.contains("{")) {
-						logger::error("AddRandomItem error: Form {} with amount {} input is invalid.", formPair, amount);
-						return {};
-					}
-					if (amount.contains("-")) {
-						const auto randomMinMax = string::split(amount, "-");
-						auto a_min = !string::is_empty(randomMinMax.at(0).c_str()) ? string::to_num<std::int32_t>(randomMinMax.at(0)) : 1;
-						auto a_max = !string::is_empty(randomMinMax.at(1).c_str()) ? string::to_num<std::int32_t>(randomMinMax.at(1)) : 1;
-						auto randomAmount = clib_util::RNG().generate<std::int32_t>(a_min, a_max);
-						amount = std::to_string(randomAmount);
-					}
-					itemList.push_back({ formPair, amount });
+			std::string formPair = *it;
+			it += 1;
+			if (it != a_args.end()) {
+				std::string amount = *it;
+				auto joinedStr = utils::JoinItemListString(formPair, amount);
+				if (joinedStr == std::pair<std::string, std::string>()) {
+					logger::error("AddRandomItem error: Form {} with amount {} input is invalid.", formPair, amount);
+					return {};
 				}
+				itemList.emplace_back(joinedStr);
 			}
 		}
 		if (itemCount > itemList.size()) {
 			logger::warn("AddRandomItem warning: the count argument must be less or equal to the number of items.");
 			itemCount = static_cast<std::uint16_t>(itemList.size());
 		}
-
+		StoredItemType a_result = {};
 		// Select %itemCount% random items and store them for later
-		while (itemCount > 0) {
+		while (itemCount > 0 && itemList.size() > 0) {
 			auto randomPos = clib_util::RNG().generate<std::uint16_t>(0, static_cast<std::uint16_t>(itemList.size() - 1));
-			std::pair<std::string, std::string> formAndAmountPair = itemList.at(randomPos);
+			const auto [formStr, amountStr] = itemList.at(randomPos);
 			// Select 1 item/amount pair only 1 time
 			itemList.erase(itemList.begin() + randomPos);
-			auto formPair = Utils::GetFormIDWithFile(formAndAmountPair.first);
+			auto formPair = utils::GetFormIDWithFile(formStr);
 			if (formPair == std::pair<std::uint32_t, std::string>()) {
 				logger::error("AddRandomItem error: {{item, amount}} was given an invalid Form argument.");
 				return {};
 			}
 			auto item = a_dataHandler->LookupForm(formPair.first, formPair.second);
 			if (!item) {
-				logger::error("AddRandomItem error: item with FormID {} for Mod {} does not exist.", formPair.first, formPair.second);
+				//logger::error("AddRandomItem error: item with FormID {} for Mod {} does not exist.", formPair.first, formPair.second);
+				continue;
+			}
+			if (!string::is_only_digit(amountStr)) {
+				logger::error("AddRandomItem error: the specified amount for item {} is invalid. It must be either a number or in the notation of \"min-max\".", item->GetName());
 				return {};
 			}
-			if (!string::is_only_digit(formAndAmountPair.second)) {
-				logger::error("AddRandomItem error: the specified amount for item {} is invalid. It must be a number.", item->GetName());
-				return {};
-			}
-			auto itemAmount = string::to_num<std::int32_t>(formAndAmountPair.second);
+			auto itemAmount = string::to_num<std::int32_t>(amountStr);
 
-			selectedRandomItems.push_back({ item, itemAmount });
+			a_result.emplace_back(item, itemAmount);
 
 			itemCount -= 1;
 		}
-		return selectedRandomItems;
+		for (const auto& [item, itemAmount] : a_result) {
+			storedItemsFunc.emplace_back(a_args.at(0), item, itemAmount);
+		}
+		//storedItemsFunc.insert_range(storedItemsFunc.end(), std::tuple(a_args.at(0), a_result));
+		return a_result;
 	}
 	else {
-		std::ranges::for_each(selectedRandomItems, [](std::pair<RE::TESForm*, std::int32_t>& a_itemAndAmount) {
-			if (a_itemAndAmount.first && a_itemAndAmount.first->IsBoundObject() && a_itemAndAmount.first->formType.get() != RE::FormType::None) {
-				AddItemAndNotify(a_itemAndAmount.first->As<RE::TESBoundObject>(), a_itemAndAmount.second);
+		// If itemCount >= storedItemsFunc.size() then any nested AddRandomItem will just be done now instead of in order
+		std::erase_if(storedItemsFunc, [&a_args, &itemCount](std::tuple<std::string, RE::TESForm*, std::int32_t>& a_itemAndAmount) {
+			auto& [a_func, a_item, a_amount] = a_itemAndAmount;
+			if (a_func == a_args.at(0) && itemCount > 0 && a_item && a_item->IsBoundObject() && a_item->formType.get() != RE::FormType::None) {
+				itemCount -= 1;
+				AddItemAndNotify(a_item->As<RE::TESBoundObject>(), a_amount);
+				return true;
 			}
+			return false;
 		});
 	}
 	return {};
-}
-
-bool Functions::GetSkill(const std::vector<std::string>& a_args, const std::string& a_type)
-{
-	if (a_type != "Check") {
-		logger::error("GetSkill error: function is a \"Check\" function only.");
-		return false;
-	}
-	if (a_args.size() != 3) {
-		logger::error("GetSkill error: function was given the wrong amount of arguments.");
-		return false;
-	}
-	if (!string::is_only_digit(a_args.at(2))) {
-		logger::error("GetSkill error: function was given an invalid number argument.");
-		return false;
-	}
-	auto skillCheckLevel = string::to_num<std::uint8_t>(a_args.at(2));
-	auto skillAV = GetPlayerSkillAV(a_args.at(1));
-	if (skillAV == RE::ActorValue::kNone) {
-		logger::error("GetSkill error: function was given the wrong skill name.");
-		return false;
-	}
-	// GetActorValue() gets the skill level with modifiers
-	auto currentSkillLevel = RE::PlayerCharacter::GetSingleton()->AsActorValueOwner()->GetActorValue(skillAV);
-	return skillCheckLevel <= currentSkillLevel;
 }
 
 void Functions::RewardSkillPercent(const std::vector<std::string>& a_args, const std::string& a_type)
@@ -521,276 +804,6 @@ void Functions::RewardPlayerXP(const std::vector<std::string>& a_args, const std
 	RE::Console::ExecuteCommand(advLevelCmd.c_str());
 }
 
-bool Functions::IsGreater(const std::vector<std::string>& a_args, const std::string& a_type)
-{
-	if (a_type != "Check") {
-		logger::error("IsGreater error: function is a \"Check\" function only.");
-		return false;
-	}
-	if (a_args.size() != 3) {
-		logger::error("IsGreater error: function was given the wrong amount of arguments.");
-		return false;
-	}
-	if (string::is_only_digit(a_args.at(1)) && string::is_only_digit(a_args.at(2))) {
-		int a_value1 = string::to_num<int>(a_args.at(1));
-		int a_value2 = string::to_num<int>(a_args.at(2));
-		return a_value1 > a_value2;
-	}
-	auto skillAV1 = GetPlayerSkillAV(a_args.at(1));
-	auto skillAV2 = GetPlayerSkillAV(a_args.at(2));
-	if (skillAV1 != RE::ActorValue::kNone && skillAV2 != RE::ActorValue::kNone) {
-		// GetBaseActorValue() gets the skill level without modifiers
-		auto currentBaseSkillLevel1 = RE::PlayerCharacter::GetSingleton()->AsActorValueOwner()->GetBaseActorValue(skillAV1);
-		auto currentBaseSkillLevel2 = RE::PlayerCharacter::GetSingleton()->AsActorValueOwner()->GetBaseActorValue(skillAV2);
-		return currentBaseSkillLevel1 > currentBaseSkillLevel2;
-	}
-	logger::error("IsGreater error: function was given an invalid number/skill name argument.");
-	return false;
-}
-
-bool Functions::IsGreaterOrEqual(const std::vector<std::string>& a_args, const std::string& a_type)
-{
-	if (a_type != "Check") {
-		logger::error("IsGreaterOrEqual error: function is a \"Check\" function only.");
-		return false;
-	}
-	if (a_args.size() != 3) {
-		logger::error("IsGreaterOrEqual error: function was given the wrong amount of arguments.");
-		return false;
-	}
-	if (string::is_only_digit(a_args.at(1)) && string::is_only_digit(a_args.at(2))) {
-		int a_value1 = string::to_num<int>(a_args.at(1));
-		int a_value2 = string::to_num<int>(a_args.at(2));
-		return a_value1 >= a_value2;
-	}
-	auto skillAV1 = GetPlayerSkillAV(a_args.at(1));
-	auto skillAV2 = GetPlayerSkillAV(a_args.at(2));
-	if (skillAV1 != RE::ActorValue::kNone && skillAV2 != RE::ActorValue::kNone) {
-		// GetBaseActorValue() gets the skill level without modifiers
-		auto currentBaseSkillLevel1 = RE::PlayerCharacter::GetSingleton()->AsActorValueOwner()->GetBaseActorValue(skillAV1);
-		auto currentBaseSkillLevel2 = RE::PlayerCharacter::GetSingleton()->AsActorValueOwner()->GetBaseActorValue(skillAV2);
-		return currentBaseSkillLevel1 >= currentBaseSkillLevel2;
-	}
-	logger::error("IsGreaterOrEqual error: function was given an invalid number/skill name argument.");
-	return false;
-}
-
-bool Functions::IsEqual(const std::vector<std::string>& a_args, const std::string& a_type)
-{
-	if (a_type != "Check") {
-		logger::error("IsEqual error: function is a \"Check\" function only.");
-		return false;
-	}
-	if (a_args.size() != 3) {
-		logger::error("IsEqual error: function was given the wrong amount of arguments.");
-		return false;
-	}
-	if (string::is_only_digit(a_args.at(1)) && string::is_only_digit(a_args.at(2))) {
-		int a_value1 = string::to_num<int>(a_args.at(1));
-		int a_value2 = string::to_num<int>(a_args.at(2));
-		return a_value1 == a_value2;
-	}
-	auto skillAV1 = GetPlayerSkillAV(a_args.at(1));
-	auto skillAV2 = GetPlayerSkillAV(a_args.at(2));
-	if (skillAV1 != RE::ActorValue::kNone && skillAV2 != RE::ActorValue::kNone) {
-		// GetBaseActorValue() gets the skill level without modifiers
-		auto currentBaseSkillLevel1 = RE::PlayerCharacter::GetSingleton()->AsActorValueOwner()->GetBaseActorValue(skillAV1);
-		auto currentBaseSkillLevel2 = RE::PlayerCharacter::GetSingleton()->AsActorValueOwner()->GetBaseActorValue(skillAV2);
-		return currentBaseSkillLevel1 == currentBaseSkillLevel2;
-	}
-	logger::error("IsEqual error: function was given an invalid number/skill name argument.");
-	return false;
-}
-
-bool Functions::IsLessOrEqual(const std::vector<std::string>& a_args, const std::string& a_type)
-{
-	if (a_type != "Check") {
-		logger::error("IsLessOrEqual error: function is a \"Check\" function only.");
-		return false;
-	}
-	if (a_args.size() != 3) {
-		logger::error("IsLessOrEqual error: function was given the wrong amount of arguments.");
-		return false;
-	}
-	if (string::is_only_digit(a_args.at(1)) && string::is_only_digit(a_args.at(2))) {
-		int a_value1 = string::to_num<int>(a_args.at(1));
-		int a_value2 = string::to_num<int>(a_args.at(2));
-		return a_value1 <= a_value2;
-	}
-	auto skillAV1 = GetPlayerSkillAV(a_args.at(1));
-	auto skillAV2 = GetPlayerSkillAV(a_args.at(2));
-	if (skillAV1 != RE::ActorValue::kNone && skillAV2 != RE::ActorValue::kNone) {
-		// GetBaseActorValue() gets the skill level without modifiers
-		auto currentBaseSkillLevel1 = RE::PlayerCharacter::GetSingleton()->AsActorValueOwner()->GetBaseActorValue(skillAV1);
-		auto currentBaseSkillLevel2 = RE::PlayerCharacter::GetSingleton()->AsActorValueOwner()->GetBaseActorValue(skillAV2);
-		return currentBaseSkillLevel1 <= currentBaseSkillLevel2;
-	}
-	logger::error("IsLessOrEqual error: function was given an invalid number/skill name argument.");
-	return false;
-}
-
-bool Functions::IsLess(const std::vector<std::string>& a_args, const std::string& a_type)
-{
-	if (a_type != "Check") {
-		logger::error("IsLess error: function is a \"Check\" function only.");
-		return false;
-	}
-	if (a_args.size() != 3) {
-		logger::error("IsLess error: function was given the wrong amount of arguments.");
-		return false;
-	}
-	if (string::is_only_digit(a_args.at(1)) && string::is_only_digit(a_args.at(2))) {
-		int a_value1 = string::to_num<int>(a_args.at(1));
-		int a_value2 = string::to_num<int>(a_args.at(2));
-		return a_value1 < a_value2;
-	}
-	auto skillAV1 = GetPlayerSkillAV(a_args.at(1));
-	auto skillAV2 = GetPlayerSkillAV(a_args.at(2));
-	if (skillAV1 != RE::ActorValue::kNone && skillAV2 != RE::ActorValue::kNone) {
-		// GetBaseActorValue() gets the skill level without modifiers
-		auto currentBaseSkillLevel1 = RE::PlayerCharacter::GetSingleton()->AsActorValueOwner()->GetBaseActorValue(skillAV1);
-		auto currentBaseSkillLevel2 = RE::PlayerCharacter::GetSingleton()->AsActorValueOwner()->GetBaseActorValue(skillAV2);
-		return currentBaseSkillLevel1 < currentBaseSkillLevel2;
-	}
-	logger::error("IsLess error: function was given an invalid number/skill name argument.");
-	return false;
-}
-
-int Functions::RollRandom(const std::vector<std::string>& a_args, const std::string& a_type)
-{
-	if (a_type != "Randomized") {
-		logger::error("RollRandom error: function is an \"Randomized\" function only.");
-		return 0;
-	}
-	if (a_args.size() != 3) {
-		logger::error("RollRandom error: function was given the wrong amount of arguments.");
-		return 0;
-	}
-	if (!string::is_only_digit(a_args.at(1)) && !string::is_only_digit(a_args.at(2))) {
-		logger::error("RollRandom error: function was given an invalid number argument.");
-		return 0;
-	}
-	int a_min = string::to_num<int>(a_args.at(1));
-	int a_max = string::to_num<int>(a_args.at(2));
-	if (a_min > a_max) {
-		logger::error("RollRandom error: minimum number must be less or equal to maximum.");
-		return 0;
-	}
-	int a_random = clib_util::RNG().generate<int>(a_min, a_max);
-	return a_random;
-}
-
-std::pair<int, int> Functions::RollDualRandom(const std::vector<std::string>& a_args, const std::string& a_type)
-{
-	if (a_type != "DualRandomized") {
-		logger::error("RollDualRandom error: function is an \"DualRandomized\" function only.");
-		return { 0, 0 };
-	}
-	if (a_args.size() != 3) {
-		logger::error("RollDualRandom error: function was given the wrong amount of arguments.");
-		return { 0, 0 };
-	}
-	if (!string::is_only_digit(a_args.at(1)) && !string::is_only_digit(a_args.at(2))) {
-		logger::error("RollDualRandom error: function was given an invalid number argument.");
-		return { 0, 0 };
-	}
-	int a_min = string::to_num<int>(a_args.at(1));
-	int a_max = string::to_num<int>(a_args.at(2));
-	if (a_min > a_max) {
-		logger::error("RollDualRandom error: minimum number must be less or equal to maximum.");
-		return { 0, 0 };
-	}
-	int a_dualRandom1 = clib_util::RNG().generate<int>(a_min, a_max);
-	int a_dualRandom2 = clib_util::RNG().generate<int>(a_min, a_max);
-	return { a_dualRandom1, a_dualRandom2 };
-}
-
-bool Functions::HasSpell(const std::vector<std::string>& a_args, const std::string& a_type)
-{
-	if (a_type != "Check") {
-		logger::error("HasSpell error: function is a \"Check\" function only.");
-		return false;
-	}
-	if (a_args.size() != 2) {
-		logger::error("HasSpell error: function was given the wrong amount of arguments.");
-		return false;
-	}
-	auto formPair = Utils::GetFormIDWithFile(a_args.at(1));
-	if (formPair == std::pair<std::uint32_t, std::string>()) {
-		logger::error("HasSpell error: function was given an invalid Form argument.");
-		return false;
-	}
-	const auto a_dataHandler = RE::TESDataHandler::GetSingleton();
-	if (!a_dataHandler) {
-		logger::error("HasSpell error: TESDataHandler not found.");
-		return false;
-	}
-	auto a_spell = a_dataHandler->LookupForm<RE::SpellItem>(formPair.first, formPair.second);
-	if (!a_spell) {
-		logger::error("HasSpell error: spell with FormID {} for Mod {} does not exist.", formPair.first, formPair.second);
-		return false;
-	}
-	return RE::PlayerCharacter::GetSingleton()->HasSpell(a_spell);
-}
-
-bool Functions::HasActiveSpell(const std::vector<std::string>& a_args, const std::string& a_type)
-{
-	if (a_type != "Check") {
-		logger::error("HasActiveSpell error: function is a \"Check\" function only.");
-		return false;
-	}
-	if (a_args.size() != 2) {
-		logger::error("HasActiveSpell error: function was given the wrong amount of arguments.");
-		return false;
-	}
-	auto formPair = Utils::GetFormIDWithFile(a_args.at(1));
-	if (formPair == std::pair<std::uint32_t, std::string>()) {
-		logger::error("HasActiveSpell error: function was given an invalid Form argument.");
-		return false;
-	}
-	const auto a_dataHandler = RE::TESDataHandler::GetSingleton();
-	if (!a_dataHandler) {
-		logger::error("HasActiveSpell error: TESDataHandler not found.");
-		return false;
-	}
-	auto a_spell = a_dataHandler->LookupForm<RE::SpellItem>(formPair.first, formPair.second);
-	if (!a_spell) {
-		logger::error("HasActiveSpell error: spell with FormID {} for Mod {} does not exist.", formPair.first, formPair.second);
-		return false;
-	}
-	using EffectFlag = RE::ActiveEffect::Flag;
-	// Store the valid effects in case the encounter has more HasActiveSpell checks
-	if (currentActiveEffects.size() == 0) {
-		// SE/AE has GetActiveEffectList()
-		if (!REL::Module::IsVR()) {
-			if (const auto activeEffectList = RE::PlayerCharacter::GetSingleton()->AsMagicTarget()->GetActiveEffectList(); activeEffectList) {
-				currentActiveEffects = *activeEffectList
-									| std::ranges::views::filter([](const auto& a_effect) {
-										return a_effect && a_effect->flags.none(EffectFlag::kInactive) && a_effect->flags.none(EffectFlag::kDispelled); })
-									| std::ranges::to<std::vector<RE::ActiveEffect*>>();
-			}
-		}
-		// Have to use a different approach for VR
-		else {
-			RE::PlayerCharacter::GetSingleton()->AsMagicTarget()->VisitActiveEffects([&](RE::ActiveEffect* a_effect) -> RE::BSContainer::ForEachResult {
-				if (a_effect) {
-					currentActiveEffects.push_back(a_effect);
-				}
-				return RE::BSContainer::ForEachResult::kContinue;
-			});
-			currentActiveEffects = currentActiveEffects
-								| std::ranges::views::filter([](const auto& a_effect) {
-									return a_effect->flags.none(EffectFlag::kInactive) && a_effect->flags.none(EffectFlag::kDispelled); })
-								| std::ranges::to<std::vector<RE::ActiveEffect*>>();
-		}
-	}
-	return std::ranges::any_of(currentActiveEffects, [a_spell](const auto& a_effect) {
-		return a_effect && a_effect->spell == a_spell;
-	});
-
-	return false;
-}
-
 void Functions::CastSpellChance(const std::vector<std::string>& a_args, const std::string& a_type)
 {
 	if (a_type != "Outcome") {
@@ -801,7 +814,7 @@ void Functions::CastSpellChance(const std::vector<std::string>& a_args, const st
 		logger::error("CastSpellChance error: function was given the wrong amount of arguments.");
 		return;
 	}
-	auto formPair = Utils::GetFormIDWithFile(a_args.at(1));
+	auto formPair = utils::GetFormIDWithFile(a_args.at(1));
 	if (formPair == std::pair<std::uint32_t, std::string>()) {
 		logger::error("CastSpellChance error: function was given an invalid Form argument.");
 		return;
@@ -831,15 +844,15 @@ void Functions::CastSpellChance(const std::vector<std::string>& a_args, const st
 		// Don't stack the effects, reset the duration instead (dispel method)
 		// Don't need to do this with Peak Value Modifier effects as they don't stack
 		std::vector<RE::EffectSetting*> hostileEffects = {};
-		bool bIsDispelled = false;
+		bool dispelled = false;
 		auto magicTarget = a_player->AsMagicTarget();
 		for (const auto& a_effect : spell->effects) {
 			// Use a bool flag for dispelled since I'm not sure how intensive HasMagicEffect() check is (haven't RE'd it)
-			if (!bIsDispelled && !a_effect->baseEffect->HasArchetype(RE::EffectSetting::Archetype::kPeakValueModifier) && magicTarget->HasMagicEffect(a_effect->baseEffect)) {
+			if (!dispelled && !a_effect->baseEffect->HasArchetype(RE::EffectSetting::Archetype::kPeakValueModifier) && magicTarget->HasMagicEffect(a_effect->baseEffect)) {
 				auto playerHandle = a_player->GetHandle();
 				if (playerHandle) {
 					magicTarget->DispelEffect(spell, playerHandle);
-					bIsDispelled = true;
+					dispelled = true;
 					// If player is in tgm then check for Hostile flag instead
 					if (!a_player->IsGodMode()) {
 						break;
@@ -848,7 +861,7 @@ void Functions::CastSpellChance(const std::vector<std::string>& a_args, const st
 			}
 			// Remove Hostile flag since the effect doesn't apply if player is in tgm
 			if (a_player->IsGodMode() && a_effect->baseEffect->IsHostile()) {
-				hostileEffects.push_back(a_effect->baseEffect);
+				hostileEffects.emplace_back(a_effect->baseEffect);
 				a_effect->baseEffect->data.flags.set(false, RE::EffectSetting::EffectSettingData::Flag::kHostile);
 			}
 		}
@@ -873,15 +886,16 @@ void Functions::RemoveActiveSpell(const std::vector<std::string>& a_args, const 
 		logger::error("RemoveActiveSpell error: function is an \"Outcome\" function only.");
 		return;
 	}
-	if (a_args.size() != 2) {
+	if (a_args.size() != 2 && a_args.size() != 3) {
 		logger::error("RemoveActiveSpell error: function was given the wrong amount of arguments.");
 		return;
 	}
-	auto formPair = Utils::GetFormIDWithFile(a_args.at(1));
+	auto formPair = utils::GetFormIDWithFile(a_args.at(1));
 	if (formPair == std::pair<std::uint32_t, std::string>()) {
 		logger::error("RemoveActiveSpell error: function was given an invalid Form argument.");
 		return;
 	}
+	const auto silent = (a_args.size() == 3 && a_args.at(2) == "true") ? true : false;
 	const auto a_dataHandler = RE::TESDataHandler::GetSingleton();
 	if (!a_dataHandler) {
 		logger::error("RemoveActiveSpell error: TESDataHandler not found.");
@@ -892,19 +906,54 @@ void Functions::RemoveActiveSpell(const std::vector<std::string>& a_args, const 
 		logger::error("RemoveActiveSpell error: spell with FormID {} for Mod {} does not exist.", formPair.first, formPair.second);
 		return;
 	}
+	using EffectFlag = RE::ActiveEffect::Flag;
 	const auto a_player = RE::PlayerCharacter::GetSingleton();
 	auto magicTarget = a_player->AsMagicTarget();
-	for (const auto& a_effect : a_spell->effects) {
-		if (magicTarget->HasMagicEffect(a_effect->baseEffect)) {
-			auto playerHandle = a_player->GetHandle();
-			if (playerHandle) {
-				magicTarget->DispelEffect(a_spell, playerHandle);
-				auto spellName = a_spell->GetFullName();
-				if (!string::is_empty(spellName)) {
-					auto notification = std::format("{} has been removed", spellName);
-					RE::SendHUDMessage::ShowHUDMessage(notification.c_str());
+	// Store the valid effects in case the encounter has more RemoveActiveSpell outcomes
+	if (currentActiveEffects.size() == 0) {
+		// SE/AE has GetActiveEffectList()
+		if (!REL::Module::IsVR()) {
+			if (const auto activeEffectList = magicTarget->GetActiveEffectList(); activeEffectList) {
+				for (const auto& a_effect : *activeEffectList) {
+					if (a_effect->flags.none(EffectFlag::kInactive) && a_effect->flags.none(EffectFlag::kDispelled)) {
+						currentActiveEffects.emplace_back(a_effect);
+					}
 				}
-				break;
+			}
+		}
+		// Have to use a different approach for VR
+		else {
+			magicTarget->VisitActiveEffects([&](RE::ActiveEffect* a_effect) -> RE::BSContainer::ForEachResult {
+				if (a_effect) {
+					currentActiveEffects.emplace_back(a_effect);
+				}
+				return RE::BSContainer::ForEachResult::kContinue;
+			});
+			// Filter out the inactive and dispelled effects
+			std::erase_if(currentActiveEffects, [](const auto& a_effect) {
+				if (a_effect->flags.any(EffectFlag::kInactive) || a_effect->flags.any(EffectFlag::kDispelled)) {
+					return true;
+				}
+				return false;
+			});
+		}
+	}
+	auto hasSpell = false;
+	std::erase_if(currentActiveEffects, [&a_spell, &hasSpell](const auto& a_effect) {
+		if (a_effect && a_effect->spell == a_spell) {
+			hasSpell = true;
+			return true;
+		}
+		return false;
+	});
+	if (hasSpell) {
+		auto playerHandle = a_player->GetHandle();
+		if (playerHandle) {
+			auto dispelled = magicTarget->DispelEffect(a_spell, playerHandle);
+			auto spellName = a_spell->GetFullName();
+			if (dispelled && !silent && !string::is_empty(spellName)) {
+				auto notification = std::format("{} has been removed", spellName);
+				RE::SendHUDMessage::ShowHUDMessage(notification.c_str());
 			}
 		}
 	}

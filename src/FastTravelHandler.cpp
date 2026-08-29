@@ -1,7 +1,6 @@
 #include "FastTravelHandler.h"
 
 #include "Settings.h"
-#include "Utils.h"
 #include "MessageBoxHandler.h"
 
 #include <algorithm>
@@ -45,7 +44,7 @@ float FastTravelHandler::GetDistanceTraveled()
 {
 	// Check if it was a map fast travel
 	if (playerMapTravelDistance > 0.0f) {
-		auto playerMapTravelDistanceMeters = Utils::GetDistanceInMeters(playerMapTravelDistance);
+		auto playerMapTravelDistanceMeters = utils::GetDistanceInMeters(playerMapTravelDistance);
 		playerMapTravelDistance = 0.0f;
 		return playerMapTravelDistanceMeters;
 	}
@@ -62,7 +61,7 @@ float FastTravelHandler::GetDistanceTraveled()
 		}
 		// We don't need the speaker after this check
 		speakerPtr.reset();
-		return Utils::GetDistanceInMeters(distance);
+		return utils::GetDistanceInMeters(distance);
 	}
 	return 0.0f;
 }
@@ -136,7 +135,7 @@ FastTravelHandler::EventResult FastTravelHandler::ProcessEvent(const RE::MenuOpe
 			const std::string sFastTravelType_temp = sFastTravelType;
 			sFastTravelType = "";
 			// Get the relevant cell now so we don't have to re-check it later in MessageBoxHandler
-			nearestCellWithLocation = Utils::GetCellNearPlayerWithLocation(a_player->parentCell);
+			nearestCellWithLocation = utils::GetCellNearPlayerWithLocation(a_player->parentCell);
 			// Additional checks for mods that interrupt fast travel and resume it after some kind of event
 			// (Fast traveling through map only)
 			if (mapMarkerPtr && mapMarkerPtr->parentCell) {
@@ -145,8 +144,8 @@ FastTravelHandler::EventResult FastTravelHandler::ProcessEvent(const RE::MenuOpe
 				// Fall-back if no parent loc: check direct location
 				if (mapMarkerCell->GetLocation()) {
 					auto mapMarkerCellLocParentLoc = mapMarkerCell->GetLocation()->parentLoc;
-					if ((mapMarkerCellLocParentLoc && Utils::GetCellIsInLocation(nearestCellWithLocation, mapMarkerCellLocParentLoc->GetFullName()))
-						|| (!mapMarkerCellLocParentLoc && Utils::GetCellIsInLocation(nearestCellWithLocation, mapMarkerCell->GetLocation()->GetFullName()))) {
+					if ((mapMarkerCellLocParentLoc && utils::GetCellIsInLocation(nearestCellWithLocation, mapMarkerCellLocParentLoc->GetFullName()))
+						|| (!mapMarkerCellLocParentLoc && utils::GetCellIsInLocation(nearestCellWithLocation, mapMarkerCell->GetLocation()->GetFullName()))) {
 						SetupMessageBoxOnFastTravelEndEvent(sFastTravelType_temp);
 					}
 				}

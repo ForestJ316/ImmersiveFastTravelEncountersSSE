@@ -18,7 +18,6 @@ public:
 	const CachedDataType& GetEncounterCache() const;
 	const std::unordered_map<RE::FormID, std::string>& GetFastTravelActivatorCache() const;
 	const bool IsSurvivalEnabled() const;
-	const bool IsValidHold(const std::string& a_hold) const;
 	const bool IsFastTravelTypeEnabled(const std::string& a_fastTravelType) const;
 
 	static inline bool bIsExperienceModActive = false;
@@ -78,7 +77,6 @@ private:
 	void InitializeGlobals();
 	
 	std::int16_t iDebugEncounter = 0;
-	std::vector<std::string> holds = {};
 
 	struct CachedEncounterData
 	{
