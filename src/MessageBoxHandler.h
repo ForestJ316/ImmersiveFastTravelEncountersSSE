@@ -37,6 +37,12 @@ private:
 	// Play (or setup) a Sound FX if it's specified on start of the encounter
 	void SetupEncounterSoundFX(std::string a_soundPath);
 
+	// Check for "Randomized" and "DualRandomized" conditions to replace the %random, %dualRandom1, %dualRandom2 strings
+	void SetRandomizedNumbers(const json& a_json, int& a_iRandom, std::pair<int, int>& a_iDualRandom);
+	void ReplaceRandomizedStrings(std::string& a_text, const int& a_iRandom, const std::pair<int, int>& a_iDualRandom);
+	// Case for "AddRandomItem" function where there might be %item1 etc. strings in the message
+	void ReplaceItemStrings(const std::vector<std::pair<RE::TESForm*, std::int32_t>>& a_itemList, std::string& a_message);
+
 	RE::BSSoundHandle soundHandle = {};
 	// Store the randomized values to not overwrite the values for nested cases
 	int iRandom = 0;

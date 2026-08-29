@@ -74,16 +74,24 @@ void Settings::InitializeSettings()
 			const auto debugSection = ini.GetSection("Debug");
 			const auto debugData = debugSection->find("iDebugEncounter");
 			if (debugData != debugSection->end() && string::iequals(debugData->first.pItem, "iDebugEncounter")) {
-				std::int16_t debug_temp = string::to_num<std::int16_t>(debugData->second);
-				if (debug_temp > 0) {
-					iDebugEncounter = debug_temp;
-					// If debug is on, then always show the relevant encounter
-					iEncounterChance = 100;
-				}
-				else {
-					// Just put something that will probably never appear
-					// in case the user decided to make an encounter with the key "0"
-					iDebugEncounter = INT16_MIN + 1;
+				if (string::icontains(debugData->second, "|")) {
+					auto debug_split = utils::SplitString(debugData->second, "|");
+					try {
+						std::int16_t debugNum_temp = string::to_num<std::int16_t>(debug_split.at(1));
+						if (debugNum_temp > 0) {
+							iDebugEncounter = { debug_split.at(0), debugNum_temp };
+							// If debug is on, then always show the relevant encounter
+							iEncounterChance = 100;
+						}
+						else {
+							// Just put something that will probably never appear
+							// in case the user decided to make an encounter with the key "0"
+							iDebugEncounter = { debug_split.at(0), INT16_MIN + 1 };
+						}
+					}
+					catch (...) {
+						logger::warn("Error parsing File: {} for iDebugEncounter. Check if the value is in the correct format.", path.string());
+					}
 				}
 			}
 		}
@@ -155,54 +163,80 @@ void Settings::InitializeEncounterCache()
 	EncounterCache["Ferry"] = {};
 	EncounterCache["Other"] = {};
 	// Populate EncounterData
-	constexpr auto encounters_path = L"Data/SKSE/Plugins/ImmersiveFastTravelEncountersSSE/Encounters.json";
-	const auto InitEncounterCache = [&](std::filesystem::path path) {
+	constexpr auto encounters_dir = L"Data/SKSE/Plugins/ImmersiveFastTravelEncountersSSE";
+	if (!std::filesystem::exists(encounters_dir)) {
+		char dir[256];
+		std::wcstombs(dir, encounters_dir, sizeof(dir));
+		logger::error("...File Directory: {} for encounters doesn't exist.", dir);
+		return;
+	}
+	bool is_initialized = false;
+	const auto InitEncounterFileCache = [&](std::filesystem::path path) {
 		std::ifstream file(path.string().c_str());
 		if (file.is_open()) {
-			json encountersList = json::parse(file);
-			for (json::const_iterator encounter = encountersList.begin(); encounter != encountersList.end(); ++encounter) {
-				// Keys must be numbered only
-				if (string::is_only_digit(encounter.key())) {
-					// iDebugEncounter setting, get only the specified encounter
-					if (iDebugEncounter <= 0 || string::to_num<int>(encounter.key()) == iDebugEncounter) {
-						// Type is a mandatory field
-						if (encounter.value().contains("Type") && encounter.value()["Type"].is_string()) {
-							// Check for conditions
-							// TODO (if there is use-case for it)
-							// Activator from json add later
-							std::vector<std::string> encounterHolds;
-							if (encounter.value().contains("Hold") && encounter.value()["Hold"].is_string()) {
-								encounterHolds = utils::SplitString(encounter.value()["Hold"].get<std::string>(), ",");
+			try {
+				json encountersList = json::parse(file);
+				if (encountersList.is_discarded()) {
+					return;
+				}
+				for (json::const_iterator encounter = encountersList.begin(); encounter != encountersList.end(); ++encounter) {
+					// Keys must be numbered only
+					if (string::is_only_digit(encounter.key())) {
+						const auto& [debug_file, debug_num] = iDebugEncounter;
+						// iDebugEncounter setting, get only the specified encounter
+						if (debug_num <= 0 || (debug_file == path.filename() && string::to_num<int>(encounter.key()) == debug_num)) {
+							// Type is a mandatory field
+							if (encounter.value().contains("Type") && encounter.value()["Type"].is_string()) {
+								// Check for conditions
+								// TODO (if there is use-case for it)
+								// Activator from json add later
+								std::vector<std::string> encounterHolds;
+								if (encounter.value().contains("Hold") && encounter.value()["Hold"].is_string()) {
+									encounterHolds = utils::SplitString(encounter.value()["Hold"].get<std::string>(), ",");
+								}
+								// Check for fast travel type
+								auto encounterType = encounter.value()["Type"].get<std::string>();
+								if (encounterType.contains("Map")) {
+									SetFastTravelEncounters("Map", encounterHolds, encounter);
+								}
+								if (encounterType.contains("Carriage")) {
+									SetFastTravelEncounters("Carriage", encounterHolds, encounter);
+								}
+								if (encounterType.contains("Ferry")) {
+									SetFastTravelEncounters("Ferry", encounterHolds, encounter);
+								}
+								if (encounterType.contains("Other")) {
+									SetFastTravelEncounters("Other", encounterHolds, encounter);
+								}
+								is_initialized = true;
 							}
-							// Check for fast travel type
-							auto encounterType = encounter.value()["Type"].get<std::string>();
-							if (encounterType.contains("Map")) {
-								SetFastTravelEncounters("Map", encounterHolds, encounter);
+							// Debug forced encounter added, don't iterate the rest of the json
+							if (debug_num > 0) {
+								break;
 							}
-							if (encounterType.contains("Carriage")) {
-								SetFastTravelEncounters("Carriage", encounterHolds, encounter);
-							}
-							if (encounterType.contains("Ferry")) {
-								SetFastTravelEncounters("Ferry", encounterHolds, encounter);
-							}
-							if (encounterType.contains("Other")) {
-								SetFastTravelEncounters("Other", encounterHolds, encounter);
-							}
-						}
-						// Debug forced encounter added, don't iterate the rest of the json
-						if (iDebugEncounter > 0) {
-							break;
 						}
 					}
 				}
 			}
-			logger::info("...Encounter cache initialized.");
+			catch (...) {
+				logger::warn("Couldn't parse JSON File: \"{}\".", path.filename().string().c_str());
+			}
 		}
 		else {
-			logger::error("...File Path: {} for Encounters.json doesn't exist.", path.string());
+			logger::error("Couldn't open JSON File: \"{}\".", path.filename().string().c_str());
 		}
 	};
-	InitEncounterCache(encounters_path);
+	for (const auto& file : std::filesystem::directory_iterator(encounters_dir)) {
+		if (file.path().extension() == ".json") {
+			InitEncounterFileCache(file);
+		}
+	}
+	if (is_initialized) {
+		logger::info("...Encounter cache initialized.");
+	}
+	else {
+		logger::info("...Encounter cache failed to initialize.");
+	}
 }
 
 void Settings::InitializeActivatorCache()
@@ -277,7 +311,7 @@ void Settings::InitializeGlobals()
 {
 	const auto a_dataHandler = RE::TESDataHandler::GetSingleton();
 	if (!a_dataHandler) {
-		logger::error("Settings::InitializeSoundFXForms: TESDataHandler not found.");
+		logger::error("Settings::InitializeGlobals: TESDataHandler not found.");
 		return;
 	}
 	sound_FXCategory = a_dataHandler->LookupForm<RE::BGSSoundCategory>(0x172A1, "Skyrim.esm");

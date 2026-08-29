@@ -99,12 +99,12 @@ void MessageBoxHandler::SetupNextMessageBox(std::uint8_t a_button)
 		auto check = pickedChoice["Check"].get<std::string>();
 		// Skip the first one if it's a nested choice, rest will be checked against further nested Randomized/DualRandomized
 		if (!nestedChoicesRef.empty()) {
-			utils::ReplaceRandomizedStrings(check, iRandomRef, iDualRandomRef);
+			ReplaceRandomizedStrings(check, iRandomRef, iDualRandomRef);
 			nestedChoicesRef.clear();
 		}
 		else {
-			utils::SetRandomizedNumbers(pickedChoice, iRandomRef, iDualRandomRef);
-			utils::ReplaceRandomizedStrings(check, iRandomRef, iDualRandomRef);
+			SetRandomizedNumbers(pickedChoice, iRandomRef, iDualRandomRef);
+			ReplaceRandomizedStrings(check, iRandomRef, iDualRandomRef);
 		}
 		bool bSuccess = Functions::DoFunction<bool>(check, "Check");
 		successStr = bSuccess ? "Success" : "Failure";
@@ -118,11 +118,11 @@ void MessageBoxHandler::SetupNextMessageBox(std::uint8_t a_button)
 	}
 	// Case when there was no "Check", but has a "Randomized" or "DualRandomized" in the parent, set the random values now
 	if (!randomizedChecksDone) {
-		utils::SetRandomizedNumbers(pickedChoice, iRandomRef, iDualRandomRef);
+		SetRandomizedNumbers(pickedChoice, iRandomRef, iDualRandomRef);
 	}
 	if (pickedChoice.contains(successStr)) {
 		// If there is a "Randomized" or "DualRandomized" in the successStr then set it now
-		utils::SetRandomizedNumbers(pickedChoice[successStr], iRandomRef, iDualRandomRef);
+		SetRandomizedNumbers(pickedChoice[successStr], iRandomRef, iDualRandomRef);
 		// Title, optional
 		currentEncounterData.title = "";
 		SetupNextTitle(pickedChoice[successStr], currentEncounterData.title);
@@ -156,7 +156,7 @@ void MessageBoxHandler::SetupNextOutcomes(const json& a_json, std::vector<std::s
 		for (json::const_iterator it = a_json["Outcomes"].begin(); it != a_json["Outcomes"].end(); ++it) {
 			if (it.value().is_string()) {
 				auto outcome = it.value().get<std::string>();
-				utils::ReplaceRandomizedStrings(outcome, a_iRandom, a_iDualRandom);
+				ReplaceRandomizedStrings(outcome, a_iRandom, a_iDualRandom);
 				a_currentOutcomes.emplace_back(outcome);
 				// Special case for AddItem, RemoveItem, AddRandomItem
 				// Store the selected items now, adding to inventory will be done upon exit
@@ -175,10 +175,10 @@ void MessageBoxHandler::SetupNextMessage(json& a_json, std::string& a_currentMes
 {
 	if (a_json.contains("Message") && a_json["Message"].is_string()) {
 		a_currentMessage = a_json["Message"];
-		utils::ReplaceRandomizedStrings(a_currentMessage, a_iRandom, a_iDualRandom);
+		ReplaceRandomizedStrings(a_currentMessage, a_iRandom, a_iDualRandom);
 		// Check if strings in message need replacing
 		if (a_storedItems.size() > 0 && a_currentMessage.contains("%item")) {
-			utils::ReplaceItemStrings(a_storedItems, a_currentMessage);
+			ReplaceItemStrings(a_storedItems, a_currentMessage);
 		}
 	}
 }
@@ -192,8 +192,8 @@ void MessageBoxHandler::SetupNextChoices(json& a_json, CurrentEncounterData& a_c
 		for (json::iterator choice = a_currentEncData.choices.begin(); choice != a_currentEncData.choices.end(); ++choice) {
 			if (choice.value().contains("Choice") && choice.value()["Choice"].is_string()) {
 				auto& choiceStr = choice.value()["Choice"].get_ref<std::string&>();
-				utils::SetRandomizedNumbers(*choice, a_iRandom, a_iDualRandom);
-				utils::ReplaceRandomizedStrings(choiceStr, a_iRandom, a_iDualRandom);
+				SetRandomizedNumbers(*choice, a_iRandom, a_iDualRandom);
+				ReplaceRandomizedStrings(choiceStr, a_iRandom, a_iDualRandom);
 				// Store the nested choices for later
 				a_nestedChoices.emplace_back(a_iRandom, a_iDualRandom);
 			}
@@ -205,7 +205,7 @@ void MessageBoxHandler::SetupNextChoices(json& a_json, CurrentEncounterData& a_c
 		// Custom text for the exit button set by the user
 		if (a_json.contains("Choice") && a_json["Choice"].is_string()) {
 			auto& choice = a_json["Choice"].get_ref<std::string&>();
-			utils::ReplaceRandomizedStrings(choice, a_iRandom, a_iDualRandom);
+			ReplaceRandomizedStrings(choice, a_iRandom, a_iDualRandom);
 			jsonExitButton[""] = { {"Choice", choice} };
 		}
 		a_currentEncData.choices = jsonExitButton;
@@ -227,6 +227,45 @@ void MessageBoxHandler::SetupEncounterSoundFX(std::string a_soundPath)
 	}
 	if (Settings::sound_FXCategory) {
 		soundHandle.SetVolume(Settings::sound_FXCategory->GetCategoryVolume());
+	}
+}
+
+void MessageBoxHandler::SetRandomizedNumbers(const json& a_json, int& a_iRandom, std::pair<int, int>& a_iDualRandom)
+{
+	if (a_json.contains("DualRandomized") && a_json["DualRandomized"].is_string()) {
+		a_iDualRandom = Functions::DoFunction<std::pair<int, int>>(a_json["DualRandomized"].get<std::string>(), "DualRandomized");
+	}
+	if (a_json.contains("Randomized") && a_json["Randomized"].is_string()) {
+		a_iRandom = Functions::DoFunction<int>(a_json["Randomized"].get<std::string>(), "Randomized");
+	}
+}
+
+void MessageBoxHandler::ReplaceRandomizedStrings(std::string& a_text, const int& a_iRandom, const std::pair<int, int>& a_iDualRandom)
+{
+	// dualRandom first so we don't risk replacing %dualRandom1 and %dualRandom2 strings in case both keys are included
+	// replace_all has a check whether the a_search argument is in the string
+	const auto& [dualRandom1, dualRandom2] = a_iDualRandom;
+	string::replace_all(a_text, "%dualRandom1", std::to_string(dualRandom1));
+	string::replace_all(a_text, "%dualRandom2", std::to_string(dualRandom2));
+	string::replace_all(a_text, "%random", std::to_string(a_iRandom));
+}
+
+void MessageBoxHandler::ReplaceItemStrings(const std::vector<std::pair<RE::TESForm*, std::int32_t>>& a_itemList, std::string& a_message)
+{
+	for (auto i = 0; i < a_itemList.size(); ++i) {
+		auto itemStr = std::format("%item{:d}", i + 1);
+		if (a_message.contains(itemStr)) {
+			const auto& [a_item, a_amount] = a_itemList.at(i);
+			auto itemName = a_item ? a_item->GetName() : "";
+			if (!string::is_empty(itemName)) {
+				// Amount, Name
+				string::replace_all(a_message, itemStr, std::format("{} {}", a_amount, itemName));
+			}
+			// If there is something wrong with the function or input then just remove the %item{:d} string
+			else {
+				string::replace_all(a_message, itemStr, "");
+			}
+		}
 	}
 }
 
@@ -264,7 +303,7 @@ void MessageBoxHandler::SetupCurrentEncounterData(const std::string& a_fastTrave
 		const auto survivalEnabled = a_settings->IsSurvivalEnabled();
 		// If Survival Mode is on, remove all non-Survival Mode encounters
 		// If Survival Mode is off, remove all Survival Mode encounters
-		std::erase_if(validEncounters, [survivalEnabled](Settings::CachedEncounterData& encounter) {
+		std::erase_if(validEncounters, [&survivalEnabled](Settings::CachedEncounterData& encounter) {
 			if ((!survivalEnabled && encounter.survival == true) || (survivalEnabled && encounter.survival == false)) {
 				return true;
 			}

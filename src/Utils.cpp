@@ -1,7 +1,5 @@
 #include "Utils.h"
 
-#include "Functions.h"
-
 #include <algorithm>
 
 std::vector<std::string> Utils::SplitString(const std::string& a_str, std::string_view a_delimiter)
@@ -145,43 +143,4 @@ float Utils::GetDistanceInMeters(float a_distance)
 		return a_distance * 1.428f / 100.0f;
 	}
 	return 0.0f;
-}
-
-void Utils::SetRandomizedNumbers(const json& a_json, int& a_iRandom, std::pair<int, int>& a_iDualRandom)
-{
-	if (a_json.contains("DualRandomized") && a_json["DualRandomized"].is_string()) {
-		a_iDualRandom = Functions::DoFunction<std::pair<int, int>>(a_json["DualRandomized"].get<std::string>(), "DualRandomized");
-	}
-	if (a_json.contains("Randomized") && a_json["Randomized"].is_string()) {
-		a_iRandom = Functions::DoFunction<int>(a_json["Randomized"].get<std::string>(), "Randomized");
-	}
-}
-
-void Utils::ReplaceRandomizedStrings(std::string& a_text, const int& a_iRandom, const std::pair<int, int>& a_iDualRandom)
-{
-	// dualRandom first so we don't risk replacing %dualRandom1 and %dualRandom2 strings in case both keys are included
-	// replace_all has a check whether the a_search argument is in the string
-	const auto& [dualRandom1, dualRandom2] = a_iDualRandom;
-	string::replace_all(a_text, "%dualRandom1", std::to_string(dualRandom1));
-	string::replace_all(a_text, "%dualRandom2", std::to_string(dualRandom2));
-	string::replace_all(a_text, "%random", std::to_string(a_iRandom));
-}
-
-void Utils::ReplaceItemStrings(const std::vector<std::pair<RE::TESForm*, std::int32_t>>& a_itemList, std::string& a_message)
-{
-	for (auto i = 0; i < a_itemList.size(); ++i) {
-		auto itemStr = std::format("%item{:d}", i + 1);
-		if (a_message.contains(itemStr)) {
-			const auto& [a_item, a_amount] = a_itemList.at(i);
-			auto itemName = a_item ? a_item->GetName() : "";
-			if (!string::is_empty(itemName)) {
-				// Amount, Name
-				string::replace_all(a_message, itemStr, std::format("{} {}", a_amount, itemName));
-			}
-			// If there is something wrong with the function or input then just remove the %item{:d} string
-			else {
-				string::replace_all(a_message, itemStr, "");
-			}
-		}
-	}
 }

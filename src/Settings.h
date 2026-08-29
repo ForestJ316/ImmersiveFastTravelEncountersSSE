@@ -45,7 +45,7 @@ public:
 	{
 		if constexpr (std::is_same_v<T, int>) {
 			// Make sure to not overwrite iEncounterChance in case there is a forced encounter
-			if (a_settingName == "iEncounterChance" && iDebugEncounter <= 0) {
+			if (a_settingName == "iEncounterChance" && iDebugEncounter.second <= 0) {
 				iEncounterChance = static_cast<std::int16_t>(a_settingValue);
 			}
 			else if (a_settingName == "iMinimumDistance") {
@@ -76,7 +76,7 @@ private:
 
 	void InitializeGlobals();
 	
-	std::int16_t iDebugEncounter = 0;
+	std::pair<std::string, std::int16_t> iDebugEncounter = { "Encounters.json", 0 };
 
 	struct CachedEncounterData
 	{
