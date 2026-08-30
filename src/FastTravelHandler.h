@@ -41,9 +41,9 @@ private:
 	// Stored distance for map fast travel distance check
 	float playerMapTravelDistance = 0.0f;
 	// Give the player 30 seconds to initiate fast travel with an activator
-	static float fThirtySecondsCheck;
+	static inline float fThirtySecondsCheck = 0.0f;
+	// Timer to show message box 1 second after loading menu closes
+	static inline float fTimerAfterLoading = 0.0f;
 	// Store the activator speaker for distance check for activator based types of fast travel
 	RE::NiPointer<RE::TESObjectREFR> speakerPtr = nullptr;
-	// Timer to show message box 1 second after loading menu closes
-	static float fTimerAfterLoading;
 };

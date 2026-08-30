@@ -530,7 +530,7 @@ Functions::StoredItemType Functions::AddItem(const std::vector<std::string>& a_a
 		std::string amountStr = a_args.at(2);
 		// Allow separate notation
 		if (amountStr.contains("-")) {
-			amountStr = utils::GetSeparateNotationRandom(amountStr);
+			amountStr = utils::GetSeparateNotationRandom(amountStr, "-");
 		}
 		if (!string::is_only_digit(amountStr)) {
 			logger::error("AddItem error: function was given an invalid amount argument. It must be either a number or in the notation of \"min-max\".");
@@ -588,7 +588,7 @@ Functions::StoredItemType Functions::RemoveItem(const std::vector<std::string>& 
 		std::string amountStr = a_args.at(2);
 		// Allow separate notation
 		if (amountStr.contains("-")) {
-			amountStr = utils::GetSeparateNotationRandom(amountStr);
+			amountStr = utils::GetSeparateNotationRandom(amountStr, "-");
 		}
 		if (!string::is_only_digit(amountStr)) {
 			logger::error("RemoveItem error: function was given an invalid amount argument. It must be either a number or in the notation of \"min-max\".");

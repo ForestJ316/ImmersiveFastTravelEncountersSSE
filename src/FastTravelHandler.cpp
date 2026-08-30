@@ -6,8 +6,6 @@
 #include <algorithm>
 
 std::string FastTravelHandler::sFastTravelType = "";
-float FastTravelHandler::fThirtySecondsCheck = 0.0f;
-float FastTravelHandler::fTimerAfterLoading = 0.0f;
 
 void FastTravelHandler::Initialize()
 {

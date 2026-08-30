@@ -3,10 +3,7 @@
 class Settings
 {
 private:
-	friend class MessageBoxHandler;
-
-	struct CachedEncounterData;
-	typedef std::unordered_map<std::string, std::unordered_map<std::string, std::vector<CachedEncounterData>>> CachedDataType;
+	using CachedDataType = std::unordered_map<std::string, std::unordered_map<std::string, std::vector<json>>>;
 
 public:
 	static Settings* GetSingleton()
@@ -77,15 +74,7 @@ private:
 	void InitializeGlobals();
 	
 	std::pair<std::string, std::int16_t> iDebugEncounter = { "Encounters.json", 0 };
-
-	struct CachedEncounterData
-	{
-		std::string title = "";
-		std::string message = "";
-		json choices;
-		std::string soundFX = "";
-		std::optional<bool> survival = std::nullopt;
-	};
+	
 	// EncounterData structure: [Fast Travel Type][Encounter Conditions].Encounter Values()
 	static CachedDataType EncounterCache;
 	// Source Activators Cache structure: Key - Valid Base Object, Value - Fast Travel Type

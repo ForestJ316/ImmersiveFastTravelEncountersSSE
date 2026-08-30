@@ -3,7 +3,7 @@
 namespace Utils
 {
 	std::vector<std::string> SplitString(const std::string& a_str, std::string_view a_delimiter);
-	std::string GetSeparateNotationRandom(const std::string& a_str);
+	std::string GetSeparateNotationRandom(const std::string& a_str, std::string_view a_delimiter);
 	std::pair<std::string, std::string> JoinItemListString(std::string a_itemForm, std::string a_amount);
 	std::pair<std::uint32_t, std::string> GetFormIDWithFile(const std::string& a_formWithFile);
 	// Iterate "bottom-up" through a cell and its parents until the specified location is either found or exhausted

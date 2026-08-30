@@ -63,7 +63,7 @@ void Settings::InitializeSettings()
 		ini.Reset(); // Deallocate memory
 	};
 	// For Debug Setting
-	constexpr auto base_ini_path = L"Data/SKSE/Plugins/ImmersiveFastTravelEncountersSSE/ImmersiveFastTravelEncounters_Base.ini";
+	constexpr auto base_ini_path = L"Data/SKSE/Plugins/ImmersiveFastTravelEncounters_Base.ini";
 	const auto InitDebugSetting = [&](std::filesystem::path path) {
 		CSimpleIniA ini;
 		ini.SetUnicode();
@@ -112,45 +112,16 @@ void Settings::InitializeSettings()
 
 void Settings::SetFastTravelEncounters(std::string a_type, std::vector<std::string> a_encounterHolds, const json::const_iterator& a_encounter)
 {
-	CachedEncounterData cachedData;
-	// Optional
-	if (a_encounter.value().contains("Title") && a_encounter.value()["Title"].is_string()) {
-		cachedData.title = a_encounter.value()["Title"];
-	}
-	// Mandatory, but fall-back to empty string
-	if (a_encounter.value().contains("Message") && a_encounter.value()["Message"].is_string()) {
-		cachedData.message = a_encounter.value()["Message"];
-	}
-	// Optional, provide means to specify custom text for the exit button. Fall-back to "Ok" button
-	if (a_encounter.value().contains("Choices") && a_encounter.value()["Choices"].is_array()) {
-		cachedData.choices = a_encounter.value()["Choices"];
-	}
-	else {
-		json exitButton;
-		exitButton[""] = { {"Choice", "Ok"} };
-		if (a_encounter.value().contains("Choice") && a_encounter.value()["Choice"].is_string()) {
-			exitButton[""] = { {"Choice", a_encounter.value()["Choice"]} };
-		}
-		cachedData.choices = exitButton;
-	}
-	// Optional
-	if (a_encounter.value().contains("SoundFX") && a_encounter.value()["SoundFX"].is_string()) {
-		cachedData.soundFX = a_encounter.value()["SoundFX"];
-	}
-	// Optional
-	if (a_encounter.value().contains("Survival") && a_encounter.value()["Survival"].is_boolean()) {
-		cachedData.survival = a_encounter.value()["Survival"];
-	}
 	// Check encounter being valid for multiple holds
 	for (const auto& hold : a_encounterHolds) {
-		EncounterCache[a_type][hold].emplace_back(cachedData);
+		EncounterCache[a_type][hold].emplace_back(a_encounter.value());
 	}
 	// TODO (maybe if there is a use-case)
 	// Check activator specific
 
 	// Check empty: no holds, no activator
 	if (a_encounterHolds.size() == 0 /* && no activator */) {
-		EncounterCache[a_type][""].emplace_back(cachedData);
+		EncounterCache[a_type][""].emplace_back(a_encounter.value());
 	}
 }
 
@@ -247,7 +218,7 @@ void Settings::InitializeActivatorCache()
 		logger::error("Settings::InitializeActivatorCache: TESDataHandler not found.");
 		return;
 	}
-	constexpr auto ini_path = L"Data/SKSE/Plugins/ImmersiveFastTravelEncountersSSE/ImmersiveFastTravelEncounters_Base.ini";
+	constexpr auto ini_path = L"Data/SKSE/Plugins/ImmersiveFastTravelEncounters_Base.ini";
 	const auto InitFastTravelActivatorCache = [&](std::filesystem::path path) {
 		CSimpleIniA ini;
 		ini.SetUnicode();

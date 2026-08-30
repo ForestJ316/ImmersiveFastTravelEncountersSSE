@@ -13,9 +13,17 @@ std::vector<std::string> Utils::SplitString(const std::string& a_str, std::strin
 	return splitStr;
 }
 
-std::string Utils::GetSeparateNotationRandom(const std::string& a_str)
+std::string Utils::GetSeparateNotationRandom(const std::string& a_str, std::string_view a_delimiter)
 {
-	const auto randomMinMax = string::split(a_str, "-");
+	if (string::is_empty(a_str.c_str())) {
+		logger::error("Function was given an empty string.");
+		return "";
+	}
+	const auto randomMinMax = SplitString(a_str, a_delimiter);
+	if (randomMinMax.size() != 2) {
+		logger::error("Function was given an invalid \"min-max\" argument. {} is not correct.", a_str);
+		return "";
+	}
 	if (!string::is_only_digit(randomMinMax.at(0))) {
 		logger::error("Function was given an invalid min amount argument. It must be a number.");
 		return "";
@@ -24,8 +32,8 @@ std::string Utils::GetSeparateNotationRandom(const std::string& a_str)
 		logger::error("Function was given an invalid max amount argument. It must be a number.");
 		return "";
 	}
-	auto a_min = !string::is_empty(randomMinMax.at(0).c_str()) ? string::to_num<std::int32_t>(randomMinMax.at(0)) : 1;
-	auto a_max = !string::is_empty(randomMinMax.at(1).c_str()) ? string::to_num<std::int32_t>(randomMinMax.at(1)) : 1;
+	auto a_min = string::to_num<std::int32_t>(randomMinMax.at(0));
+	auto a_max = string::to_num<std::int32_t>(randomMinMax.at(1));
 	auto randomAmount = clib_util::RNG().generate<std::int32_t>(a_min, a_max);
 	return std::to_string(randomAmount);
 }
@@ -42,9 +50,9 @@ std::pair<std::string, std::string> Utils::JoinItemListString(std::string a_item
 	string::replace_first_instance(a_itemForm, "{", "");
 	string::replace_first_instance(a_amount, "}", "");
 	if (a_amount.contains("-")) {
-		a_amount = GetSeparateNotationRandom(a_amount);
+		a_amount = GetSeparateNotationRandom(a_amount, "-");
 	}
-	return std::pair(a_itemForm, a_amount);
+	return { a_itemForm, a_amount };
 }
 
 std::pair<std::uint32_t, std::string> Utils::GetFormIDWithFile(const std::string& a_formWithFile)
@@ -64,7 +72,7 @@ std::pair<std::uint32_t, std::string> Utils::GetFormIDWithFile(const std::string
 	}
 	auto formID = string::to_num<std::uint32_t>(formStr, true);
 	auto fileName = a_formWithFile.substr(a_formWithFile.find("|") + 1);
-	return std::make_pair(formID, fileName);
+	return { formID, fileName };
 }
 
 bool Utils::GetCellIsInLocation(RE::TESObjectCELL* a_cell, const std::string_view& a_locName)
