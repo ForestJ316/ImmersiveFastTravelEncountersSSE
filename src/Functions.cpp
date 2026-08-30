@@ -523,10 +523,10 @@ Functions::StoredItemType Functions::AddItem(const std::vector<std::string>& a_a
 		logger::error("AddItem error: function was given an invalid Form argument.");
 		return {};
 	}
-	const auto& currentEncounterData = MessageBoxHandler::GetSingleton()->GetCurrentEncounterData();
+	const auto& CurrentEncounter = MessageBoxHandler::GetSingleton()->GetCurrentEncounter();
 	// Keep adding to the item list until it's time to exit the encounter
 	// In case there are nested outcomes with AddItem...
-	if (!currentEncounterData.exit) {
+	if (!CurrentEncounter.exit) {
 		std::string amountStr = a_args.at(2);
 		// Allow separate notation
 		if (amountStr.contains("-")) {
@@ -581,10 +581,10 @@ Functions::StoredItemType Functions::RemoveItem(const std::vector<std::string>& 
 		logger::error("RemoveItem error: function was given an invalid Form argument.");
 		return {};
 	}
-	const auto& currentEncounterData = MessageBoxHandler::GetSingleton()->GetCurrentEncounterData();
+	const auto& CurrentEncounter = MessageBoxHandler::GetSingleton()->GetCurrentEncounter();
 	// Keep adding to the item list until it's time to exit the encounter
 	// In case there are nested outcomes with RemoveItem...
-	if (!currentEncounterData.exit) {
+	if (!CurrentEncounter.exit) {
 		std::string amountStr = a_args.at(2);
 		// Allow separate notation
 		if (amountStr.contains("-")) {
@@ -640,10 +640,10 @@ Functions::StoredItemType Functions::AddRandomItem(const std::vector<std::string
 	}
 	auto itemCount = string::to_num<std::uint16_t>(a_args.at(1));
 
-	const auto& currentEncounterData = MessageBoxHandler::GetSingleton()->GetCurrentEncounterData();
+	const auto& CurrentEncounter = MessageBoxHandler::GetSingleton()->GetCurrentEncounter();
 	// Keep adding to the item list until it's time to exit the encounter
 	// In case there are nested outcomes with AddRandomItem...
-	if (!currentEncounterData.exit) {
+	if (!CurrentEncounter.exit) {
 		const auto a_dataHandler = RE::TESDataHandler::GetSingleton();
 		if (!a_dataHandler) {
 			logger::error("AddRandomItem error: TESDataHandler not found.");

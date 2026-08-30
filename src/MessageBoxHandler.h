@@ -23,7 +23,7 @@ public:
 	void DisplayMessageBox(bool a_init = false);
 	void SetupCurrentEncounterData(const std::string& a_fastTravelType);
 
-	const CurrentEncounterData& GetCurrentEncounterData() const;
+	const CurrentEncounterData& GetCurrentEncounter() const;
 	void ResetCurrentEncounterData();
 
 private:
@@ -63,5 +63,5 @@ private:
 		NestedRandomType nestedRandoms = {};
 		bool exit = false;
 	};
-	static CurrentEncounterData currentEncounterData;
+	static CurrentEncounterData CurrentEncounter;
 };

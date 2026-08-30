@@ -6,13 +6,13 @@
 
 #include <algorithm>
 
-MessageBoxHandler::CurrentEncounterData MessageBoxHandler::currentEncounterData = {};
+MessageBoxHandler::CurrentEncounterData MessageBoxHandler::CurrentEncounter = {};
 
 void MessageBoxHandler::Run(std::uint8_t a_button)
 {
-	if (currentEncounterData.exit) {
+	if (CurrentEncounter.exit) {
 		// Do all outcomes upon exiting the MessageBox menu
-		for (const auto& outcome : currentEncounterData.outcomes) {
+		for (const auto& outcome : CurrentEncounter.outcomes) {
 			Functions::DoFunction<void>(outcome, "Outcome");
 		}
 		ResetCurrentEncounterData();
@@ -42,14 +42,14 @@ void MessageBoxHandler::Show(const std::string& a_bodyText, const std::vector<st
 void MessageBoxHandler::DisplayMessageBox(bool a_init)
 {
 	// Don't show anything if there are no buttons
-	if (!currentEncounterData.choices.empty()) {
+	if (!CurrentEncounter.choices.empty()) {
 		// Create bodyText
-		std::string bodyText = currentEncounterData.title + "\n" + currentEncounterData.message;
-		if (string::is_empty(currentEncounterData.title.c_str())) {
-			bodyText = currentEncounterData.message;
+		std::string bodyText = CurrentEncounter.title + "\n" + CurrentEncounter.message;
+		if (string::is_empty(CurrentEncounter.title.c_str())) {
+			bodyText = CurrentEncounter.message;
 		}
 		std::vector<std::string> buttonText;
-		for (json::iterator choice = currentEncounterData.choices.begin(); choice != currentEncounterData.choices.end(); ++choice) {
+		for (json::iterator choice = CurrentEncounter.choices.begin(); choice != CurrentEncounter.choices.end(); ++choice) {
 			if (choice.value().contains("Choice") && choice.value()["Choice"].is_string()) {
 				buttonText.emplace_back(choice.value()["Choice"].get<std::string>());
 			}
@@ -68,9 +68,9 @@ void MessageBoxHandler::DisplayMessageBox(bool a_init)
 
 void MessageBoxHandler::SetupNextMessageBox(std::uint8_t a_button, json a_encounter)
 {
-	auto& nestedRandomsRef = currentEncounterData.nestedRandoms;
-	auto& randomRef = currentEncounterData.random;
-	auto& dualRandomRef = currentEncounterData.dualRandom;
+	auto& nestedRandomsRef = CurrentEncounter.nestedRandoms;
+	auto& randomRef = CurrentEncounter.random;
+	auto& dualRandomRef = CurrentEncounter.dualRandom;
 
 	json pickedChoice = a_encounter;
 	std::string successStr = "Success";
@@ -86,11 +86,11 @@ void MessageBoxHandler::SetupNextMessageBox(std::uint8_t a_button, json a_encoun
 			}
 		}
 		catch (...) {}
-		if (currentEncounterData.choices.is_array()) {
-			pickedChoice = currentEncounterData.choices.at(a_button);
+		if (CurrentEncounter.choices.is_array()) {
+			pickedChoice = CurrentEncounter.choices.at(a_button);
 		}
-		else if (currentEncounterData.choices.is_object()) {
-			pickedChoice = currentEncounterData.choices;
+		else if (CurrentEncounter.choices.is_object()) {
+			pickedChoice = CurrentEncounter.choices;
 		}
 	}
 	// Check for a "Check" condition, as well as any nested ones
@@ -129,20 +129,20 @@ void MessageBoxHandler::SetupNextMessageBox(std::uint8_t a_button, json a_encoun
 	}
 	if (!pickedChoice.empty()) {
 		// Title, optional
-		currentEncounterData.title = "";
-		SetupNextTitle(pickedChoice, currentEncounterData);
+		CurrentEncounter.title = "";
+		SetupNextTitle(pickedChoice, CurrentEncounter);
 		// Outcomes, optional
 		// Do before message for cases with %item strings
-		SetupNextOutcomes(pickedChoice, currentEncounterData);
+		SetupNextOutcomes(pickedChoice, CurrentEncounter);
 		// Message, mandatory to advance the encounter. Still check in case of user error
-		currentEncounterData.message = "";
-		SetupNextMessage(pickedChoice, currentEncounterData);
+		CurrentEncounter.message = "";
+		SetupNextMessage(pickedChoice, CurrentEncounter);
 		// Choice/Choices, optional. Will just be an "Ok" button if no key
-		SetupNextChoices(pickedChoice, currentEncounterData);
+		SetupNextChoices(pickedChoice, CurrentEncounter);
 		// If there is no message then exit the encounter...
-		if (string::is_empty(currentEncounterData.message.c_str())) {
-			currentEncounterData.choices.clear();
-			currentEncounterData.exit = true;
+		if (string::is_empty(CurrentEncounter.message.c_str())) {
+			CurrentEncounter.choices.clear();
+			CurrentEncounter.exit = true;
 			Run(0);
 		}
 	}
@@ -339,22 +339,22 @@ void MessageBoxHandler::SetupCurrentEncounterData(const std::string& a_fastTrave
 					SetupEncounterSoundFX(soundFX);
 				}
 			}
-			currentEncounterData.isSetup = true;
+			CurrentEncounter.isSetup = true;
 			SetupNextMessageBox(0, randomEncounter);
 		}
 	}
 }
 
-const MessageBoxHandler::CurrentEncounterData& MessageBoxHandler::GetCurrentEncounterData() const
+const MessageBoxHandler::CurrentEncounterData& MessageBoxHandler::GetCurrentEncounter() const
 {
-	return currentEncounterData;
+	return CurrentEncounter;
 }
 
 void MessageBoxHandler::ResetCurrentEncounterData()
 {
 	const auto a_messageBoxHandler = MessageBoxHandler::GetSingleton();
-	if (a_messageBoxHandler->currentEncounterData.isSetup) {
-		a_messageBoxHandler->currentEncounterData = {};
+	if (a_messageBoxHandler->CurrentEncounter.isSetup) {
+		a_messageBoxHandler->CurrentEncounter = {};
 		a_messageBoxHandler->soundHandle = {};
 		Functions::ResetVars();
 	}
