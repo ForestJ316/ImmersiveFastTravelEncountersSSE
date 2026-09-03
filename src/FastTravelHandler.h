@@ -31,16 +31,16 @@ private:
 	static inline REL::Relocation<decltype(Update)> _Update;
 
 	float GetDistanceTraveled();
-	void SetupMessageBoxOnFastTravelEndEvent(std::string a_fastTravelType);
+	void SetupMessageBoxOnFastTravelEndEvent(std::string a_travelType);
 
 	
 	// Give the player 30 seconds to initiate fast travel with an activator
 	static inline float fThirtySecondsCheck = 0.0f;
 	// Timer to show message box 1 second after loading menu closes
 	static inline float fTimerAfterLoading = 0.0f;
-
-	struct FastTravelData {
-		std::string fastTravelType = "";
+	struct FastTravelData
+	{
+		std::string travelType = "";
 		// Have to do additional checks for mods that might interrupt fast travel and then resume it after some kind of event
 		// (Map fast travel only)
 		RE::NiPointer<RE::TESObjectREFR> mapMarkerPtr = nullptr;

@@ -2,7 +2,7 @@
 
 #include <ClibUtil/SimpleIni.hpp>
 
-Settings::CachedDataType Settings::EncounterCache = {};
+std::unordered_map<std::uint16_t, Settings::EncounterCacheData> Settings::EncounterCache = {};
 std::unordered_map<RE::FormID, std::string> Settings::FastTravelActivatorCache = {};
 
 void Settings::InitializeSettings()
@@ -63,7 +63,7 @@ void Settings::InitializeSettings()
 		ini.Reset(); // Deallocate memory
 	};
 	// For Debug Setting
-	constexpr auto base_ini_path = L"Data/SKSE/Plugins/ImmersiveFastTravelEncounters_Base.ini";
+	constexpr auto base_ini_path = L"Data/SKSE/Plugins/ImmersiveFastTravelEncountersSSE.ini";
 	const auto InitDebugSetting = [&](std::filesystem::path path) {
 		CSimpleIniA ini;
 		ini.SetUnicode();
@@ -96,7 +96,7 @@ void Settings::InitializeSettings()
 			}
 		}
 		else {
-			logger::error("...File Path: {} for ImmersiveFastTravelEncounters_Base.ini doesn't exist.", path.string());
+			logger::error("...File Path: {} for ImmersiveFastTravelEncountersSSE.ini doesn't exist.", path.string());
 		}
 		ini.Reset(); // Deallocate memory
 	};
@@ -110,29 +110,27 @@ void Settings::InitializeSettings()
 	logger::info("...Settings done initializing.");
 }
 
-void Settings::SetFastTravelEncounters(std::string a_type, std::vector<std::string> a_encounterHolds, const json::const_iterator& a_encounter)
+void Settings::SetFastTravelEncounters(const json::const_iterator& a_encounter)
 {
-	// Check encounter being valid for multiple holds
-	for (const auto& hold : a_encounterHolds) {
-		EncounterCache[a_type][hold].emplace_back(a_encounter.value());
+	EncounterCacheData encounterData = {};
+	encounterData.encounter = *a_encounter;
+	// Check for conditions
+	// TODO (if there is use-case for it)
+	// Activator from json add later
+	encounterData.travelTypes = utils::SplitString(a_encounter.value()["Type"].get<std::string>(), ",");
+	if (a_encounter.value().contains("Hold") && a_encounter.value()["Hold"].is_string()) {
+		encounterData.holds = a_encounter.value()["Hold"].get<std::string>();
 	}
-	// TODO (maybe if there is a use-case)
-	// Check activator specific
-
-	// Check empty: no holds, no activator
-	if (a_encounterHolds.size() == 0 /* && no activator */) {
-		EncounterCache[a_type][""].emplace_back(a_encounter.value());
+	if (a_encounter.value().contains("Survival") && a_encounter.value()["Survival"].is_boolean()) {
+		encounterData.survival = a_encounter.value()["Survival"];
 	}
+	const auto encounterNum = static_cast<std::uint16_t>(EncounterCache.size() + 1);
+	EncounterCache[encounterNum] = encounterData;
 }
 
 void Settings::InitializeEncounterCache()
 {
 	logger::info("Initializing Encounter cache...");
-	// Initialize EncounterData
-	EncounterCache["Map"] = {};
-	EncounterCache["Carriage"] = {};
-	EncounterCache["Ferry"] = {};
-	EncounterCache["Other"] = {};
 	// Populate EncounterData
 	constexpr auto encounters_dir = L"Data/SKSE/Plugins/ImmersiveFastTravelEncountersSSE";
 	if (!std::filesystem::exists(encounters_dir)) {
@@ -158,28 +156,11 @@ void Settings::InitializeEncounterCache()
 						if (debug_num <= 0 || (debug_file == path.filename() && string::to_num<int>(encounter.key()) == debug_num)) {
 							// Type is a mandatory field
 							if (encounter.value().contains("Type") && encounter.value()["Type"].is_string()) {
-								// Check for conditions
-								// TODO (if there is use-case for it)
-								// Activator from json add later
-								std::vector<std::string> encounterHolds;
-								if (encounter.value().contains("Hold") && encounter.value()["Hold"].is_string()) {
-									encounterHolds = utils::SplitString(encounter.value()["Hold"].get<std::string>(), ",");
-								}
-								// Check for fast travel type
-								auto encounterType = encounter.value()["Type"].get<std::string>();
-								if (encounterType.contains("Map")) {
-									SetFastTravelEncounters("Map", encounterHolds, encounter);
-								}
-								if (encounterType.contains("Carriage")) {
-									SetFastTravelEncounters("Carriage", encounterHolds, encounter);
-								}
-								if (encounterType.contains("Ferry")) {
-									SetFastTravelEncounters("Ferry", encounterHolds, encounter);
-								}
-								if (encounterType.contains("Other")) {
-									SetFastTravelEncounters("Other", encounterHolds, encounter);
-								}
+								SetFastTravelEncounters(encounter);
 								is_initialized = true;
+							}
+							else {
+								logger::warn("Skipped encounter {} in file {}. It doesn't have a \"Type\" field which is mandatory.", encounter.key(), path.filename().string().c_str());
 							}
 							// Debug forced encounter added, don't iterate the rest of the json
 							if (debug_num > 0) {
@@ -218,7 +199,7 @@ void Settings::InitializeActivatorCache()
 		logger::error("Settings::InitializeActivatorCache: TESDataHandler not found.");
 		return;
 	}
-	constexpr auto ini_path = L"Data/SKSE/Plugins/ImmersiveFastTravelEncounters_Base.ini";
+	constexpr auto ini_path = L"Data/SKSE/Plugins/ImmersiveFastTravelEncountersSSE.ini";
 	const auto InitFastTravelActivatorCache = [&](std::filesystem::path path) {
 		CSimpleIniA ini;
 		ini.SetUnicode();
@@ -271,7 +252,7 @@ void Settings::InitializeActivatorCache()
 			logger::info("...Fast Travel Activator cache initialized.");
 		}
 		else {
-			logger::error("...File Path: {} for ImmersiveFastTravelEncounters_Base.ini doesn't exist.", path.string());
+			logger::error("...File Path: {} for ImmersiveFastTravelEncountersSSE.ini doesn't exist.", path.string());
 		}
 		ini.Reset(); // Deallocate memory
 	};
@@ -310,7 +291,7 @@ void Settings::Initialize()
 	InitializeGlobals();
 }
 
-const Settings::CachedDataType& Settings::GetEncounterCache() const
+const std::unordered_map<std::uint16_t, Settings::EncounterCacheData>& Settings::GetEncounterCache() const
 {
 	return EncounterCache;
 }
@@ -334,18 +315,18 @@ const bool Settings::IsSurvivalEnabled() const
 	return false;
 }
 
-const bool Settings::IsFastTravelTypeEnabled(const std::string& a_fastTravelType) const
+const bool Settings::IsFastTravelTypeEnabled(const std::string& a_travelType) const
 {
-	if (a_fastTravelType == "Map" && bMapEncounters) {
+	if (a_travelType == "Map" && bMapEncounters) {
 		return true;
 	}
-	else if (a_fastTravelType == "Carriage" && bCarriageEncounters) {
+	else if (a_travelType == "Carriage" && bCarriageEncounters) {
 		return true;
 	}
-	else if (a_fastTravelType == "Ferry" && bFerryEncounters) {
+	else if (a_travelType == "Ferry" && bFerryEncounters) {
 		return true;
 	}
-	else if (a_fastTravelType == "Other" && bOtherEncounters) {
+	else if (a_travelType == "Other" && bOtherEncounters) {
 		return true;
 	}
 	return false;

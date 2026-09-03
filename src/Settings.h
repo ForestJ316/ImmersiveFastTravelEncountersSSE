@@ -3,7 +3,7 @@
 class Settings
 {
 private:
-	using CachedDataType = std::unordered_map<std::string, std::unordered_map<std::string, std::vector<json>>>;
+	struct EncounterCacheData;
 
 public:
 	static Settings* GetSingleton()
@@ -12,10 +12,10 @@ public:
 		return std::addressof(singleton);
 	}
 	void Initialize();
-	const CachedDataType& GetEncounterCache() const;
+	const std::unordered_map<std::uint16_t, EncounterCacheData>& GetEncounterCache() const;
 	const std::unordered_map<RE::FormID, std::string>& GetFastTravelActivatorCache() const;
 	const bool IsSurvivalEnabled() const;
-	const bool IsFastTravelTypeEnabled(const std::string& a_fastTravelType) const;
+	const bool IsFastTravelTypeEnabled(const std::string& a_travelType) const;
 
 	static inline bool bIsExperienceModActive = false;
 
@@ -66,7 +66,7 @@ public:
 	}
 
 private:
-	void SetFastTravelEncounters(std::string a_type, std::vector<std::string> a_encounterHolds, const json::const_iterator& a_encounter);
+	void SetFastTravelEncounters(const json::const_iterator& a_encounter);
 	void InitializeSettings();
 	void InitializeEncounterCache();
 	void InitializeActivatorCache();
@@ -75,8 +75,16 @@ private:
 	
 	std::pair<std::string, std::int16_t> iDebugEncounter = { "Encounters.json", 0 };
 	
-	// EncounterData structure: [Fast Travel Type][Encounter Conditions].Encounter Values()
-	static CachedDataType EncounterCache;
+	struct EncounterCacheData
+	{
+		json encounter = {};
+		// Store fast travel types as vector to check the strings precisely
+		std::vector<std::string> travelTypes = {};
+		// Store holds as string for string comparison instead of iterating every hold
+		std::string holds = "";
+		std::optional<bool> survival = std::nullopt;
+	};
+	static std::unordered_map<std::uint16_t, EncounterCacheData> EncounterCache;
 	// Source Activators Cache structure: Key - Valid Base Object, Value - Fast Travel Type
 	static std::unordered_map<RE::FormID, std::string> FastTravelActivatorCache;
 };

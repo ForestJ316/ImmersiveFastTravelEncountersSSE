@@ -10,16 +10,17 @@ MessageBoxHandler::CurrentEncounterData MessageBoxHandler::CurrentEncounter = {}
 
 void MessageBoxHandler::Run(std::uint8_t a_button)
 {
+	if (!CurrentEncounter.exit) {
+		callback(static_cast<std::uint8_t>(a_button));
+		DisplayMessageBox();
+	}
+	// CurrentEncounter.exit can change during callback, but exit only after the last button is pressed
 	if (CurrentEncounter.exit) {
 		// Do all outcomes upon exiting the MessageBox menu
 		for (const auto& outcome : CurrentEncounter.outcomes) {
 			Functions::DoFunction<void>(outcome, "Outcome");
 		}
 		ResetCurrentEncounterData();
-	}
-	else {
-		callback(static_cast<std::uint8_t>(a_button));
-		DisplayMessageBox();
 	}
 }
 
@@ -143,7 +144,6 @@ void MessageBoxHandler::SetupNextMessageBox(std::uint8_t a_button, json a_encoun
 		if (string::is_empty(CurrentEncounter.message.c_str())) {
 			CurrentEncounter.choices.clear();
 			CurrentEncounter.exit = true;
-			Run(0);
 		}
 	}
 	// Fail-safe in case the "Check" fails or the fields are wrong names
@@ -223,7 +223,7 @@ void MessageBoxHandler::SetupNextChoices(json& a_json, CurrentEncounterData& a_e
 			jsonExitButton[""] = { {"Choice", choice} };
 		}
 		a_encounterData.choices = jsonExitButton;
-		a_encounterData.exit = true;
+		//a_encounterData.exit = true;
 	}
 }
 
@@ -282,11 +282,11 @@ void MessageBoxHandler::ReplaceItemStrings(std::string& a_message, const StoredI
 	}
 }
 
-void MessageBoxHandler::SetupCurrentEncounterData(const std::string& a_fastTravelType)
+void MessageBoxHandler::SetupCurrentEncounterData(const std::string& a_travelType)
 {
 	ResetCurrentEncounterData(); // In case there was a non-regular exit from the previous encounter
 
-	if (string::is_empty(a_fastTravelType.c_str())) {
+	if (string::is_empty(a_travelType.c_str())) {
 		return;
 	}
 	// Roll the chance to show an encounter based on the setting
@@ -296,52 +296,47 @@ void MessageBoxHandler::SetupCurrentEncounterData(const std::string& a_fastTrave
 	}
 	const auto a_settings = Settings::GetSingleton();
 	const auto& EncounterCache = a_settings->GetEncounterCache();
-	if (const auto& encounters = EncounterCache.find(a_fastTravelType); encounters != EncounterCache.end()) {
-		std::vector<json> validEncounters;
-		auto& nearestCellWithLocation = FastTravelHandler::GetSingleton()->GetNearestCellWithLocation();
-		for (const auto& [encCondition, encData] : encounters->second) {
-			// First - Empty string, since it's valid for everything of this fast travel type
-			if (encCondition == "") {
-				validEncounters.insert_range(validEncounters.end(), encData);
-			}
-			// Second - Check if player is in a valid hold
-			else if (utils::GetCellIsInLocation(nearestCellWithLocation, encCondition)) {
-				validEncounters.insert_range(validEncounters.end(), encData);
-				// We don't care about the check after this, therefore reset the cell object
-				nearestCellWithLocation = nullptr;
-			}
-			// TODO (maybe if there is a use-case)
-			// Third - Check activator
+	std::vector<json> validEncounters = {};
+	auto& nearestCellWithLocation = FastTravelHandler::GetSingleton()->GetNearestCellWithLocation();
+	const auto survivalEnabled = a_settings->IsSurvivalEnabled();
+	for (const auto& [encounterNum, encounterData] : EncounterCache) {
+		if (!std::ranges::any_of(encounterData.travelTypes, [&a_travelType](const auto& a_cachedTravelType) {
+			return a_travelType == a_cachedTravelType;
+		})) {
+			continue;
 		}
-		const auto survivalEnabled = a_settings->IsSurvivalEnabled();
-		// If Survival Mode is on, remove all non-Survival Mode encounters
-		// If Survival Mode is off, remove all Survival Mode encounters
-		std::erase_if(validEncounters, [&survivalEnabled](json& encounter) {
-			if (encounter.contains("Survival") && encounter["Survival"].is_boolean()) {
-				const auto& encounterSurvival = encounter["Survival"].get_ref<bool&>();
-				if ((!survivalEnabled && encounterSurvival) || (survivalEnabled && !encounterSurvival)) {
-					return true;
-				}
-			}
-			return false;
-		});
-		if (validEncounters.size() > 0) {
-			std::uint16_t randomEncounterPos = 0;
-			if (validEncounters.size() > 1) {
-				// Return a random valid encounter
-				randomEncounterPos = clib_util::RNG().generate<std::uint16_t>(0, static_cast<std::uint16_t>(validEncounters.size() - 1));
-			}
-			auto& randomEncounter = validEncounters.at(randomEncounterPos);
-			// Setup the sound fx now, but don't play it yet
-			if (randomEncounter.contains("SoundFX") && randomEncounter["SoundFX"].is_string()) {
-				const auto& soundFX = randomEncounter["SoundFX"].get_ref<std::string&>();
-				if (!string::is_empty(soundFX.c_str())) {
-					SetupEncounterSoundFX(soundFX);
-				}
-			}
-			CurrentEncounter.isSetup = true;
-			SetupNextMessageBox(0, randomEncounter);
+		// If Survival Mode is on, ignore all non-Survival Mode encounters
+		// If Survival Mode is off, ignore all Survival Mode encounters
+		if ((!survivalEnabled && encounterData.survival == true) || (survivalEnabled && encounterData.survival == false)) {
+			continue;
 		}
+		// First - No Holds since it's valid for everything of this fast travel type
+		if (string::is_empty(encounterData.holds.c_str())) {
+			validEncounters.emplace_back(encounterData.encounter);
+		}
+		// Second - Check if player is in a valid hold
+		else if (utils::GetCellIsInLocation(nearestCellWithLocation, encounterData.holds)) {
+			validEncounters.emplace_back(encounterData.encounter);
+		}
+		// TODO (maybe if there is a use-case)
+		// Third - Check activator
+	}
+	if (validEncounters.size() > 0) {
+		std::uint16_t randomEncounterPos = 0;
+		if (validEncounters.size() > 1) {
+			// Return a random valid encounter
+			randomEncounterPos = clib_util::RNG().generate<std::uint16_t>(0, static_cast<std::uint16_t>(validEncounters.size() - 1));
+		}
+		auto& randomEncounter = validEncounters.at(randomEncounterPos);
+		// Setup the sound fx now, but don't play it yet
+		if (randomEncounter.contains("SoundFX") && randomEncounter["SoundFX"].is_string()) {
+			const auto& soundFX = randomEncounter["SoundFX"].get_ref<std::string&>();
+			if (!string::is_empty(soundFX.c_str())) {
+				SetupEncounterSoundFX(soundFX);
+			}
+		}
+		CurrentEncounter.isSetup = true;
+		SetupNextMessageBox(0, randomEncounter);
 	}
 }
 

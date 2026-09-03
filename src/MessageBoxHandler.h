@@ -21,7 +21,7 @@ public:
 	void Show(const std::string& a_bodyText, const std::vector<std::string>& a_buttonText, std::function<void(std::uint8_t)> a_callback);
 
 	void DisplayMessageBox(bool a_init = false);
-	void SetupCurrentEncounterData(const std::string& a_fastTravelType);
+	void SetupCurrentEncounterData(const std::string& a_travelType);
 
 	const CurrentEncounterData& GetCurrentEncounter() const;
 	void ResetCurrentEncounterData();

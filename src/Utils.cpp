@@ -85,7 +85,8 @@ bool Utils::GetCellIsInLocation(RE::TESObjectCELL* a_cell, const std::string_vie
 	auto currentLoc = a_cell->GetLocation();
 	RE::BSFixedString currentLocName = currentLoc->GetFullName();
 	while (currentLocName != "Tamriel" && i != 0) {
-		if (string::iequals(currentLocName, a_locName)) {
+		// Check against a potential list of holds as well
+		if (string::icontains(currentLocName, a_locName) || string::icontains(a_locName, currentLocName)) {
 			return true;
 		}
 		if (currentLoc->parentLoc) {

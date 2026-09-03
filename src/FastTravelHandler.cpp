@@ -64,9 +64,9 @@ float FastTravelHandler::GetDistanceTraveled()
 	return 0.0f;
 }
 
-void FastTravelHandler::SetupMessageBoxOnFastTravelEndEvent(const std::string a_fastTravelType)
+void FastTravelHandler::SetupMessageBoxOnFastTravelEndEvent(const std::string a_travelType)
 {
-	MessageBoxHandler::GetSingleton()->SetupCurrentEncounterData(a_fastTravelType);
+	MessageBoxHandler::GetSingleton()->SetupCurrentEncounterData(a_travelType);
 	// We don't need the fast travel data anymore
 	ResetCurrentFastTravelData();
 	// Show the MessageBox after 1.5 seconds
@@ -89,14 +89,14 @@ FastTravelHandler::EventResult FastTravelHandler::ProcessEvent(const RE::MenuOpe
 					fastTravelSource = activatorCache.find(speakerBase->formID);
 				}
 				if (fastTravelSource != activatorCache.end()) {
-					CurrentFastTravel.fastTravelType = fastTravelSource->second;
+					CurrentFastTravel.travelType = fastTravelSource->second;
 					// Store the speaker for distance check
 					CurrentFastTravel.speakerPtr = speaker.get();
 				}
 			}
 		}
 		// Give 30 seconds to start the fast travel after closing the dialogue
-		else if (!a_event->opening && !string::is_empty(CurrentFastTravel.fastTravelType.c_str())) {
+		else if (!a_event->opening && !string::is_empty(CurrentFastTravel.travelType.c_str())) {
 			fThirtySecondsCheck = 30.0f;
 		}
 	}
@@ -108,15 +108,15 @@ FastTravelHandler::EventResult FastTravelHandler::ProcessEvent(const RE::MenuOpe
 			// fast travel with another activator nearby (that is not in the list) within the 30s window
 			const auto a_player = RE::PlayerCharacter::GetSingleton();
 			auto& speakerPtrRef = CurrentFastTravel.speakerPtr;
-			if (speakerPtrRef && speakerPtrRef.get() && a_player && a_player->GetDistance(speakerPtrRef.get()) > 800.0f) {
+			if (speakerPtrRef && speakerPtrRef.get() && a_player && a_player->GetDistance(speakerPtrRef.get()) > 1000.0f) {
 				ResetCurrentFastTravelData();
 			}
 		}
 		// Use loading menu instead of TESFastTravelEndEvent for cases where fast travel is being done with moveto functionality
 		// From limited testing TESFastTravelEndEvent fires before loading menu closes
-		if (!a_event->opening && !string::is_empty(CurrentFastTravel.fastTravelType.c_str())) {
+		if (!a_event->opening && !string::is_empty(CurrentFastTravel.travelType.c_str())) {
 			// If the fast travel type is toggled off then don't do the event
-			if (!Settings::GetSingleton()->IsFastTravelTypeEnabled(CurrentFastTravel.fastTravelType)) {
+			if (!Settings::GetSingleton()->IsFastTravelTypeEnabled(CurrentFastTravel.travelType)) {
 				ResetCurrentFastTravelData();
 				return EventResult::kContinue;
 			}
@@ -146,14 +146,18 @@ FastTravelHandler::EventResult FastTravelHandler::ProcessEvent(const RE::MenuOpe
 					auto mapMarkerCellLocParentLoc = mapMarkerCell->GetLocation()->parentLoc;
 					if ((mapMarkerCellLocParentLoc && utils::GetCellIsInLocation(nearestCellWithLocRef, mapMarkerCellLocParentLoc->GetFullName()))
 						|| (!mapMarkerCellLocParentLoc && utils::GetCellIsInLocation(nearestCellWithLocRef, mapMarkerCell->GetLocation()->GetFullName()))) {
-						SetupMessageBoxOnFastTravelEndEvent(CurrentFastTravel.fastTravelType);
+						SetupMessageBoxOnFastTravelEndEvent(CurrentFastTravel.travelType);
 					}
 				}
 			}
 			// Everything else pretty much same
 			// Map (ini specified activators), Carriage, Ferry, Other
 			else {
-				SetupMessageBoxOnFastTravelEndEvent(CurrentFastTravel.fastTravelType);
+				SetupMessageBoxOnFastTravelEndEvent(CurrentFastTravel.travelType);
+			}
+			// If setup didn't happen just reset the current data
+			if (!string::is_empty(CurrentFastTravel.travelType.c_str())) {
+				ResetCurrentFastTravelData();
 			}
 		}
 	}
@@ -162,7 +166,7 @@ FastTravelHandler::EventResult FastTravelHandler::ProcessEvent(const RE::MenuOpe
 
 FastTravelHandler::EventResult FastTravelHandler::ProcessEvent(const RE::TESActivateEvent* a_event, RE::BSTEventSource<RE::TESActivateEvent>*)
 {
-	if (string::is_empty(CurrentFastTravel.fastTravelType.c_str()) || (a_event->actionRef && a_event->actionRef.get() != RE::PlayerCharacter::GetSingleton())) {
+	if (string::is_empty(CurrentFastTravel.travelType.c_str()) || (a_event->actionRef && a_event->actionRef.get() != RE::PlayerCharacter::GetSingleton())) {
 		return EventResult::kContinue;
 	}
 	// We only care about teleport doors
@@ -180,7 +184,7 @@ void FastTravelHandler::FastTravelConfirm(RE::FastTravelConfirmCallback* a_this,
 			fThirtySecondsCheck = 0.0f;
 			CurrentFastTravel.speakerPtr.reset();
 		}
-		CurrentFastTravel.fastTravelType = "Map";
+		CurrentFastTravel.travelType = "Map";
 		// Different struct for VR in RuntimeData()
 		auto mapMarker = !REL::Module::IsVR() ? a_this->mapMenu->GetRuntimeData()->mapMarker.get() : a_this->mapMenu->GetVRRuntimeData()->mapMarker.get();
 		CurrentFastTravel.mapMarkerPtr = mapMarker;
@@ -218,7 +222,7 @@ void FastTravelHandler::Update(RE::PlayerCharacter* a_player, float a_delta)
 void FastTravelHandler::ResetCurrentFastTravelData()
 {
 	const auto a_fastTravelHandler = FastTravelHandler::GetSingleton();
-	if (!string::is_empty(a_fastTravelHandler->CurrentFastTravel.fastTravelType.c_str())) {
+	if (!string::is_empty(a_fastTravelHandler->CurrentFastTravel.travelType.c_str())) {
 		a_fastTravelHandler->CurrentFastTravel = {};
 		a_fastTravelHandler->fThirtySecondsCheck = 0.0f;
 		a_fastTravelHandler->fTimerAfterLoading = 0.0f;
