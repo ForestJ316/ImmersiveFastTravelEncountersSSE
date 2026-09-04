@@ -211,7 +211,7 @@ void Settings::InitializeActivatorCache()
 			// GetSection returns a multimap. The keys are already sorted by default
 			const auto mapSection = ini.GetSection("Map");
 			for (const auto& data : *mapSection) {
-				auto formWithFile = utils::GetFormIDWithFile(data.first.pItem);
+				const auto formWithFile = utils::GetFormIDWithFile(data.first.pItem);
 				if (formWithFile.first) {
 					auto formID = a_dataHandler->LookupFormID(formWithFile.first, formWithFile.second);
 					if (formID) {
@@ -221,7 +221,7 @@ void Settings::InitializeActivatorCache()
 			}
 			const auto carriageSection = ini.GetSection("Carriage");
 			for (const auto& data : *carriageSection) {
-				auto formWithFile = utils::GetFormIDWithFile(data.first.pItem);
+				const auto formWithFile = utils::GetFormIDWithFile(data.first.pItem);
 				if (formWithFile.first) {
 					auto formID = a_dataHandler->LookupFormID(formWithFile.first, formWithFile.second);
 					if (formID) {
@@ -231,7 +231,7 @@ void Settings::InitializeActivatorCache()
 			}
 			const auto ferrySection = ini.GetSection("Ferry");
 			for (const auto& data : *ferrySection) {
-				auto formWithFile = utils::GetFormIDWithFile(data.first.pItem);
+				const auto formWithFile = utils::GetFormIDWithFile(data.first.pItem);
 				if (formWithFile.first) {
 					auto formID = a_dataHandler->LookupFormID(formWithFile.first, formWithFile.second);
 					if (formID) {
@@ -241,7 +241,7 @@ void Settings::InitializeActivatorCache()
 			}
 			const auto otherSection = ini.GetSection("Other");
 			for (const auto& data : *otherSection) {
-				auto formWithFile = utils::GetFormIDWithFile(data.first.pItem);
+				const auto formWithFile = utils::GetFormIDWithFile(data.first.pItem);
 				if (formWithFile.first) {
 					auto formID = a_dataHandler->LookupFormID(formWithFile.first, formWithFile.second);
 					if (formID) {

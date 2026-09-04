@@ -94,10 +94,17 @@ FastTravelHandler::EventResult FastTravelHandler::ProcessEvent(const RE::MenuOpe
 					CurrentFastTravel.speakerPtr = speaker.get();
 				}
 			}
+			if (fTimerAfterLoading > 0.0f) {
+				bDialogueBeforeEvent = true;
+				fTimerAfterLoading = 0.1f; // Just do the encounter immediately after dialogue ends
+			}
 		}
-		// Give 30 seconds to start the fast travel after closing the dialogue
-		else if (!a_event->opening && !string::is_empty(CurrentFastTravel.travelType.c_str())) {
-			fThirtySecondsCheck = 30.0f;
+		else if (!a_event->opening) {
+			// Give 30 seconds to start the fast travel after closing the dialogue
+			if (!string::is_empty(CurrentFastTravel.travelType.c_str())) {
+				fThirtySecondsCheck = 30.0f;
+			}
+			bDialogueBeforeEvent = false;
 		}
 	}
 	if (a_event->menuName == RE::LoadingMenu::MENU_NAME) {
@@ -211,7 +218,7 @@ void FastTravelHandler::Update(RE::PlayerCharacter* a_player, float a_delta)
 		}
 	}
 	// Show message box 1.5 seconds after loading menu closes on fast traveling
-	if (fTimerAfterLoading > 0.0f) {
+	if (fTimerAfterLoading > 0.0f && !bDialogueBeforeEvent) {
 		fTimerAfterLoading -= RE::BSTimer::GetSingleton()->realTimeDelta;
 		if (fTimerAfterLoading <= 0.0f) {
 			MessageBoxHandler::GetSingleton()->DisplayMessageBox(true);

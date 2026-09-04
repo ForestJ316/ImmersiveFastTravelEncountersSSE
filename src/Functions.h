@@ -15,6 +15,7 @@ public:
 		"AddItem",
 		"RemoveItem",
 		"AddRandomItem",
+		"AddItemLL",
 	};
 	
 	template <typename T>
@@ -96,6 +97,12 @@ public:
 				}
 				break;
 			}
+			case Function_Name::IsInFaction: {
+				if constexpr (std::is_same_v<T, bool>) {
+					return Functions::IsInFaction(args, a_type);
+				}
+				break;
+			}
 			// Outcomes
 			case Function_Name::AddItem: {
 				if constexpr (std::is_same_v<T, StoredItemType>) {
@@ -116,6 +123,13 @@ public:
 					return Functions::AddRandomItem(args, a_type);
 				}
 				Functions::AddRandomItem(args, a_type);
+				break;
+			}
+			case Function_Name::AddItemLL: {
+				if constexpr (std::is_same_v<T, StoredItemType>) {
+					return Functions::AddItemLL(args, a_type);
+				}
+				Functions::AddItemLL(args, a_type);
 				break;
 			}
 			case Function_Name::RewardSkillPercent: {
@@ -178,10 +192,12 @@ private:
 		IsEqual,
 		IsLessOrEqual,
 		IsLess,
+		IsInFaction,
 		// Outcomes
 		AddItem,
 		RemoveItem,
 		AddRandomItem,
+		AddItemLL,
 		RewardSkillPercent,
 		RewardPlayerXP,
 		CastSpellChance,
@@ -210,10 +226,12 @@ private:
 		if (a_str == "IsEqual") return Function_Name::IsEqual;
 		if (a_str == "IsLessOrEqual") return Function_Name::IsLessOrEqual;
 		if (a_str == "IsLess") return Function_Name::IsLess;
+		if (a_str == "IsInFaction") return Function_Name::IsInFaction;
 		// Outcomes
 		if (a_str == "AddItem") return Function_Name::AddItem;
 		if (a_str == "RemoveItem") return Function_Name::RemoveItem;
 		if (a_str == "AddRandomItem") return Function_Name::AddRandomItem;
+		if (a_str == "AddItemLL") return Function_Name::AddItemLL;
 		if (a_str == "RewardSkillPercent") return Function_Name::RewardSkillPercent;
 		if (a_str == "RewardPlayerXP") return Function_Name::RewardPlayerXP;		
 		if (a_str == "CastSpellChance") return Function_Name::CastSpellChance;
@@ -259,15 +277,25 @@ private:
 	static bool IsLessOrEqual(const std::vector<std::string>& a_args, const std::string& a_type);
 	// IsLess, a_value1, a_value2
 	static bool IsLess(const std::vector<std::string>& a_args, const std::string& a_type);
+	// IsInFaction, 0xFormID|Mod
+	static bool IsInFaction(const std::vector<std::string>& a_args, const std::string& a_type);
 	// ----------------------------------- Outcomes -----------------------------------
 	// AddItem, 0xFormID|Mod, a_amount
+	// First call: store the items because of replacement strings in the message
+	// Second call: actually add the selected items
 	static StoredItemType AddItem(const std::vector<std::string>& a_args, const std::string& a_type);
 	// RemoveItem, 0xFormID|Mod, a_amount
+	// First call: store the items because of replacement strings in the message
+	// Second call: actually add the selected items
 	static StoredItemType RemoveItem(const std::vector<std::string>& a_args, const std::string& a_type);
 	// AddRandomItem, a_count, list of {a_item, a_amount}
 	// First call: store the items because of replacement strings in the message
 	// Second call: actually add the selected items
 	static StoredItemType AddRandomItem(const std::vector<std::string>& a_args, const std::string& a_type);
+	// AddItemLL, a_leveledList
+	// First call: store the items because of replacement strings in the message
+	// Second call: actually add the selected items
+	static StoredItemType AddItemLL(const std::vector<std::string>& a_args, const std::string& a_type);
 	// RewardSkillPercent, a_skillName, a_percentage
 	// (Only if Experience mod is not active)
 	static void RewardSkillPercent(const std::vector<std::string>& a_args, const std::string& a_type);
@@ -289,7 +317,7 @@ private:
 	// ModColdPercent, a_percentage
 	static void ModColdPercent(const std::vector<std::string>& a_args, const std::string& a_type);
 	
-	// Store the selected items for AddRandomItem
+	// Store the selected items for item functions
 	static StoredItemFuncType storedItemsFunc;
 	// Store the current valid active effects for the encounter
 	// in order to avoid iterating active effects multiple times

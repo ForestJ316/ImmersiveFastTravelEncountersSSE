@@ -138,7 +138,7 @@ bool Functions::HasItem(const std::vector<std::string>& a_args, const std::strin
 		logger::error("HasItem error: function was given the wrong amount of arguments.");
 		return false;
 	}
-	auto formPair = utils::GetFormIDWithFile(a_args.at(1));
+	const auto formPair = utils::GetFormIDWithFile(a_args.at(1));
 	if (formPair == std::pair<std::uint32_t, std::string>()) {
 		logger::error("HasItem error: function was given an invalid Form argument.");
 		return false;
@@ -206,7 +206,7 @@ bool Functions::HasSpell(const std::vector<std::string>& a_args, const std::stri
 		logger::error("HasSpell error: function was given the wrong amount of arguments.");
 		return false;
 	}
-	auto formPair = utils::GetFormIDWithFile(a_args.at(1));
+	const auto formPair = utils::GetFormIDWithFile(a_args.at(1));
 	if (formPair == std::pair<std::uint32_t, std::string>()) {
 		logger::error("HasSpell error: function was given an invalid Form argument.");
 		return false;
@@ -234,7 +234,7 @@ bool Functions::HasActiveSpell(const std::vector<std::string>& a_args, const std
 		logger::error("HasActiveSpell error: function was given the wrong amount of arguments.");
 		return false;
 	}
-	auto formPair = utils::GetFormIDWithFile(a_args.at(1));
+	const auto formPair = utils::GetFormIDWithFile(a_args.at(1));
 	if (formPair == std::pair<std::uint32_t, std::string>()) {
 		logger::error("HasActiveSpell error: function was given an invalid Form argument.");
 		return false;
@@ -507,6 +507,34 @@ bool Functions::IsLess(const std::vector<std::string>& a_args, const std::string
 	return false;
 }
 
+bool Functions::IsInFaction(const std::vector<std::string>& a_args, const std::string& a_type)
+{
+	if (a_type != "Check") {
+		logger::error("IsInFaction error: function is a \"Check\" function only.");
+		return false;
+	}
+	if (a_args.size() != 2) {
+		logger::error("IsInFaction error: function was given the wrong amount of arguments.");
+		return false;
+	}
+	const auto formPair = utils::GetFormIDWithFile(a_args.at(1));
+	if (formPair == std::pair<std::uint32_t, std::string>()) {
+		logger::error("IsInFaction error: function was given an invalid Form argument.");
+		return false;
+	}
+	const auto a_dataHandler = RE::TESDataHandler::GetSingleton();
+	if (!a_dataHandler) {
+		logger::error("IsInFaction error: TESDataHandler not found.");
+		return false;
+	}
+	auto faction = a_dataHandler->LookupForm<RE::TESFaction>(formPair.first, formPair.second);
+	if (!faction) {
+		logger::error("IsInFaction error: faction with FormID {} for Mod {} does not exist.", formPair.first, formPair.second);
+		return false;
+	}
+	return RE::PlayerCharacter::GetSingleton()->IsInFaction(faction);
+}
+
 // ----------------------------------- Outcomes -----------------------------------
 Functions::StoredItemType Functions::AddItem(const std::vector<std::string>& a_args, const std::string& a_type)
 {
@@ -518,15 +546,25 @@ Functions::StoredItemType Functions::AddItem(const std::vector<std::string>& a_a
 		logger::error("AddItem error: function was given the wrong amount of arguments.");
 		return {};
 	}
-	auto formPair = utils::GetFormIDWithFile(a_args.at(1));
-	if (formPair == std::pair<std::uint32_t, std::string>()) {
-		logger::error("AddItem error: function was given an invalid Form argument.");
-		return {};
-	}
 	const auto& CurrentEncounter = MessageBoxHandler::GetSingleton()->GetCurrentEncounter();
 	// Keep adding to the item list until it's time to exit the encounter
 	// In case there are nested outcomes with AddItem...
 	if (!CurrentEncounter.exit) {
+		const auto formPair = utils::GetFormIDWithFile(a_args.at(1));
+		if (formPair == std::pair<std::uint32_t, std::string>()) {
+			logger::error("AddItem error: function was given an invalid Form argument.");
+			return {};
+		}
+		const auto a_dataHandler = RE::TESDataHandler::GetSingleton();
+		if (!a_dataHandler) {
+			logger::error("AddItem error: TESDataHandler not found.");
+			return {};
+		}
+		auto item = a_dataHandler->LookupForm(formPair.first, formPair.second);
+		if (!item) {
+			logger::error("AddItem error: item with FormID {} for Mod {} does not exist.", formPair.first, formPair.second);
+			return {};
+		}
 		std::string amountStr = a_args.at(2);
 		// Allow separate notation
 		if (amountStr.contains("-")) {
@@ -538,16 +576,6 @@ Functions::StoredItemType Functions::AddItem(const std::vector<std::string>& a_a
 		}
 		auto amount = string::to_num<std::int32_t>(amountStr);
 
-		const auto a_dataHandler = RE::TESDataHandler::GetSingleton();
-		if (!a_dataHandler) {
-			logger::error("AddItem error: TESDataHandler not found.");
-			return {};
-		}
-		auto item = a_dataHandler->LookupForm(formPair.first, formPair.second);
-		if (!item) {
-			logger::error("AddItem error: item with FormID {} for Mod {} does not exist.", formPair.first, formPair.second);
-			return {};
-		}
 		storedItemsFunc.emplace_back(a_args.at(0), item, amount);
 		return { { item, amount } };
 	}
@@ -576,15 +604,25 @@ Functions::StoredItemType Functions::RemoveItem(const std::vector<std::string>& 
 		logger::error("RemoveItem error: function was given the wrong amount of arguments.");
 		return {};
 	}
-	auto formPair = utils::GetFormIDWithFile(a_args.at(1));
-	if (formPair == std::pair<std::uint32_t, std::string>()) {
-		logger::error("RemoveItem error: function was given an invalid Form argument.");
-		return {};
-	}
 	const auto& CurrentEncounter = MessageBoxHandler::GetSingleton()->GetCurrentEncounter();
 	// Keep adding to the item list until it's time to exit the encounter
 	// In case there are nested outcomes with RemoveItem...
 	if (!CurrentEncounter.exit) {
+		const auto formPair = utils::GetFormIDWithFile(a_args.at(1));
+		if (formPair == std::pair<std::uint32_t, std::string>()) {
+			logger::error("RemoveItem error: function was given an invalid Form argument.");
+			return {};
+		}
+		const auto a_dataHandler = RE::TESDataHandler::GetSingleton();
+		if (!a_dataHandler) {
+			logger::error("RemoveItem error: TESDataHandler not found.");
+			return {};
+		}
+		auto item = a_dataHandler->LookupForm(formPair.first, formPair.second);
+		if (!item) {
+			logger::error("RemoveItem error: item with FormID {} for Mod {} does not exist.", formPair.first, formPair.second);
+			return {};
+		}
 		std::string amountStr = a_args.at(2);
 		// Allow separate notation
 		if (amountStr.contains("-")) {
@@ -596,16 +634,6 @@ Functions::StoredItemType Functions::RemoveItem(const std::vector<std::string>& 
 		}
 		auto amount = string::to_num<std::int32_t>(amountStr);
 
-		const auto a_dataHandler = RE::TESDataHandler::GetSingleton();
-		if (!a_dataHandler) {
-			logger::error("RemoveItem error: TESDataHandler not found.");
-			return {};
-		}
-		auto item = a_dataHandler->LookupForm(formPair.first, formPair.second);
-		if (!item) {
-			logger::error("RemoveItem error: item with FormID {} for Mod {} does not exist.", formPair.first, formPair.second);
-			return {};
-		}
 		storedItemsFunc.emplace_back(a_args.at(0), item, amount);
 		return { { item, amount } };
 	}
@@ -677,7 +705,7 @@ Functions::StoredItemType Functions::AddRandomItem(const std::vector<std::string
 			const auto [formStr, amountStr] = itemList.at(randomPos);
 			// Select 1 item/amount pair only 1 time
 			itemList.erase(itemList.begin() + randomPos);
-			auto formPair = utils::GetFormIDWithFile(formStr);
+			const auto formPair = utils::GetFormIDWithFile(formStr);
 			if (formPair == std::pair<std::uint32_t, std::string>()) {
 				logger::error("AddRandomItem error: {{item, amount}} was given an invalid Form argument.");
 				return {};
@@ -709,6 +737,57 @@ Functions::StoredItemType Functions::AddRandomItem(const std::vector<std::string
 			auto& [a_func, a_item, a_amount] = a_itemAndAmount;
 			if (a_func == a_args.at(0) && itemCount > 0 && a_item && a_item->IsBoundObject() && a_item->formType.get() != RE::FormType::None) {
 				itemCount -= 1;
+				AddItemAndNotify(a_item->As<RE::TESBoundObject>(), a_amount);
+				return true;
+			}
+			return false;
+		});
+	}
+	return {};
+}
+
+Functions::StoredItemType Functions::AddItemLL(const std::vector<std::string>& a_args, const std::string& a_type)
+{
+	if (a_type != "Outcome") {
+		logger::error("AddItemLL error: function is an \"Outcome\" function only.");
+		return {};
+	}
+	if (a_args.size() != 2) {
+		logger::error("AddItemLL error: function was given the wrong amount of arguments.");
+		return {};
+	}
+	const auto& CurrentEncounter = MessageBoxHandler::GetSingleton()->GetCurrentEncounter();
+	// Keep adding to the item list until it's time to exit the encounter
+	// In case there are nested outcomes with AddRandomItem...
+	if (!CurrentEncounter.exit) {
+		const auto formPair = utils::GetFormIDWithFile(a_args.at(1));
+		if (formPair == std::pair<std::uint32_t, std::string>()) {
+			logger::error("AddItemLL error: {{Leveled List}} was given an invalid Form argument.");
+			return {};
+		}
+		const auto a_dataHandler = RE::TESDataHandler::GetSingleton();
+		if (!a_dataHandler) {
+			logger::error("AddItemLL error: TESDataHandler not found.");
+			return {};
+		}
+		auto leveledItem = a_dataHandler->LookupForm<RE::TESLevItem>(formPair.first, formPair.second);
+		if (!leveledItem) {
+			logger::error("AddItemLL error: leveled list with FormID {} for Mod {} does not exist.", formPair.first, formPair.second);
+			return {};
+		}
+		RE::BSScrapArray<RE::CALCED_OBJECT> calcedObjList = {};		
+		leveledItem->CalculateCurrentFormList(RE::PlayerCharacter::GetSingleton()->GetLevel(), 1, calcedObjList, 0, true);
+		StoredItemType a_result = {};
+		for (const auto& leveledObject : calcedObjList) {
+			a_result.emplace_back(leveledObject.form, leveledObject.count);
+			storedItemsFunc.emplace_back(a_args.at(0), leveledObject.form, leveledObject.count);
+		}
+		return a_result;
+	}
+	else {
+		std::erase_if(storedItemsFunc, [&a_args](std::tuple<std::string, RE::TESForm*, std::int32_t>& a_itemAndAmount) {
+			auto& [a_func, a_item, a_amount] = a_itemAndAmount;
+			if (a_func == a_args.at(0) && a_item && a_item->IsBoundObject() && a_item->formType.get() != RE::FormType::None) {
 				AddItemAndNotify(a_item->As<RE::TESBoundObject>(), a_amount);
 				return true;
 			}
@@ -814,7 +893,7 @@ void Functions::CastSpellChance(const std::vector<std::string>& a_args, const st
 		logger::error("CastSpellChance error: function was given the wrong amount of arguments.");
 		return;
 	}
-	auto formPair = utils::GetFormIDWithFile(a_args.at(1));
+	const auto formPair = utils::GetFormIDWithFile(a_args.at(1));
 	if (formPair == std::pair<std::uint32_t, std::string>()) {
 		logger::error("CastSpellChance error: function was given an invalid Form argument.");
 		return;
@@ -890,7 +969,7 @@ void Functions::RemoveActiveSpell(const std::vector<std::string>& a_args, const 
 		logger::error("RemoveActiveSpell error: function was given the wrong amount of arguments.");
 		return;
 	}
-	auto formPair = utils::GetFormIDWithFile(a_args.at(1));
+	const auto formPair = utils::GetFormIDWithFile(a_args.at(1));
 	if (formPair == std::pair<std::uint32_t, std::string>()) {
 		logger::error("RemoveActiveSpell error: function was given an invalid Form argument.");
 		return;

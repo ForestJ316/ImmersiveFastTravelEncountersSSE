@@ -38,6 +38,12 @@ std::string Utils::GetSeparateNotationRandom(const std::string& a_str, std::stri
 	return std::to_string(randomAmount);
 }
 
+void Utils::CleanItemListString(std::string& a_str)
+{
+	string::replace_first_instance(a_str, "{", "");
+	string::replace_first_instance(a_str, "}", "");
+}
+
 std::pair<std::string, std::string> Utils::JoinItemListString(std::string a_itemForm, std::string a_amount)
 {
 	if (string::is_empty(a_itemForm.c_str()) || string::is_empty(a_amount.c_str())) {
@@ -47,15 +53,15 @@ std::pair<std::string, std::string> Utils::JoinItemListString(std::string a_item
 		logger::error("Form {} with amount {} input is invalid.", a_itemForm, a_amount);
 		return {};
 	}
-	string::replace_first_instance(a_itemForm, "{", "");
-	string::replace_first_instance(a_amount, "}", "");
+	CleanItemListString(a_itemForm);
+	CleanItemListString(a_amount);
 	if (a_amount.contains("-")) {
 		a_amount = GetSeparateNotationRandom(a_amount, "-");
 	}
 	return { a_itemForm, a_amount };
 }
 
-std::pair<std::uint32_t, std::string> Utils::GetFormIDWithFile(const std::string& a_formWithFile)
+const std::pair<std::uint32_t, std::string> Utils::GetFormIDWithFile(const std::string& a_formWithFile)
 {
 	if (string::is_empty(a_formWithFile.c_str())) {
 		logger::error("Form for a specified function is empty.");

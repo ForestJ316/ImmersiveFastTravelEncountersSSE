@@ -36,8 +36,10 @@ private:
 	
 	// Give the player 30 seconds to initiate fast travel with an activator
 	static inline float fThirtySecondsCheck = 0.0f;
-	// Timer to show message box 1 second after loading menu closes
+	// Timer to show message box 1.5 seconds after loading menu closes
 	static inline float fTimerAfterLoading = 0.0f;
+	// Case for courier (or any other insta-dialogue) appearing after fast travel, have a flag for it
+	static inline bool bDialogueBeforeEvent = false;
 	struct FastTravelData
 	{
 		std::string travelType = "";
