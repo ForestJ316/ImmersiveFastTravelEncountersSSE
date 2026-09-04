@@ -307,6 +307,34 @@ bool Functions::IsRace(const std::vector<std::string>& a_args, const std::string
 	return false;
 }
 
+bool Functions::IsInFaction(const std::vector<std::string>& a_args, const std::string& a_type)
+{
+	if (a_type != "Check") {
+		logger::error("IsInFaction error: function is a \"Check\" function only.");
+		return false;
+	}
+	if (a_args.size() != 2) {
+		logger::error("IsInFaction error: function was given the wrong amount of arguments.");
+		return false;
+	}
+	const auto formPair = utils::GetFormIDWithFile(a_args.at(1));
+	if (formPair == std::pair<std::uint32_t, std::string>()) {
+		logger::error("IsInFaction error: function was given an invalid Form argument.");
+		return false;
+	}
+	const auto a_dataHandler = RE::TESDataHandler::GetSingleton();
+	if (!a_dataHandler) {
+		logger::error("IsInFaction error: TESDataHandler not found.");
+		return false;
+	}
+	auto faction = a_dataHandler->LookupForm<RE::TESFaction>(formPair.first, formPair.second);
+	if (!faction) {
+		logger::error("IsInFaction error: faction with FormID {} for Mod {} does not exist.", formPair.first, formPair.second);
+		return false;
+	}
+	return RE::PlayerCharacter::GetSingleton()->IsInFaction(faction);
+}
+
 bool Functions::IsGreater(const std::vector<std::string>& a_args, const std::string& a_type)
 {
 	if (a_type != "Check") {
@@ -505,34 +533,6 @@ bool Functions::IsLess(const std::vector<std::string>& a_args, const std::string
 	}
 	logger::error("IsLess error: function was given an invalid number/skill name argument.");
 	return false;
-}
-
-bool Functions::IsInFaction(const std::vector<std::string>& a_args, const std::string& a_type)
-{
-	if (a_type != "Check") {
-		logger::error("IsInFaction error: function is a \"Check\" function only.");
-		return false;
-	}
-	if (a_args.size() != 2) {
-		logger::error("IsInFaction error: function was given the wrong amount of arguments.");
-		return false;
-	}
-	const auto formPair = utils::GetFormIDWithFile(a_args.at(1));
-	if (formPair == std::pair<std::uint32_t, std::string>()) {
-		logger::error("IsInFaction error: function was given an invalid Form argument.");
-		return false;
-	}
-	const auto a_dataHandler = RE::TESDataHandler::GetSingleton();
-	if (!a_dataHandler) {
-		logger::error("IsInFaction error: TESDataHandler not found.");
-		return false;
-	}
-	auto faction = a_dataHandler->LookupForm<RE::TESFaction>(formPair.first, formPair.second);
-	if (!faction) {
-		logger::error("IsInFaction error: faction with FormID {} for Mod {} does not exist.", formPair.first, formPair.second);
-		return false;
-	}
-	return RE::PlayerCharacter::GetSingleton()->IsInFaction(faction);
 }
 
 // ----------------------------------- Outcomes -----------------------------------
@@ -746,14 +746,14 @@ Functions::StoredItemType Functions::AddRandomItem(const std::vector<std::string
 	return {};
 }
 
-Functions::StoredItemType Functions::AddItemLL(const std::vector<std::string>& a_args, const std::string& a_type)
+Functions::StoredItemType Functions::AddLeveledItem(const std::vector<std::string>& a_args, const std::string& a_type)
 {
 	if (a_type != "Outcome") {
-		logger::error("AddItemLL error: function is an \"Outcome\" function only.");
+		logger::error("AddLeveledItem error: function is an \"Outcome\" function only.");
 		return {};
 	}
 	if (a_args.size() != 2) {
-		logger::error("AddItemLL error: function was given the wrong amount of arguments.");
+		logger::error("AddLeveledItem error: function was given the wrong amount of arguments.");
 		return {};
 	}
 	const auto& CurrentEncounter = MessageBoxHandler::GetSingleton()->GetCurrentEncounter();
@@ -762,17 +762,17 @@ Functions::StoredItemType Functions::AddItemLL(const std::vector<std::string>& a
 	if (!CurrentEncounter.exit) {
 		const auto formPair = utils::GetFormIDWithFile(a_args.at(1));
 		if (formPair == std::pair<std::uint32_t, std::string>()) {
-			logger::error("AddItemLL error: {{Leveled List}} was given an invalid Form argument.");
+			logger::error("AddLeveledItem error: Leveled Item was given an invalid Form argument.");
 			return {};
 		}
 		const auto a_dataHandler = RE::TESDataHandler::GetSingleton();
 		if (!a_dataHandler) {
-			logger::error("AddItemLL error: TESDataHandler not found.");
+			logger::error("AddLeveledItem error: TESDataHandler not found.");
 			return {};
 		}
 		auto leveledItem = a_dataHandler->LookupForm<RE::TESLevItem>(formPair.first, formPair.second);
 		if (!leveledItem) {
-			logger::error("AddItemLL error: leveled list with FormID {} for Mod {} does not exist.", formPair.first, formPair.second);
+			logger::error("AddLeveledItem error: leveled list with FormID {} for Mod {} does not exist.", formPair.first, formPair.second);
 			return {};
 		}
 		RE::BSScrapArray<RE::CALCED_OBJECT> calcedObjList = {};		
